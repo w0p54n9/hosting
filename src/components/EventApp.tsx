@@ -11,7 +11,7 @@ import type { EventBundle, MyTrip } from '@/lib/types';
 
 const POLL_MS = 20_000;
 
-export default function EventApp({ slug }: { slug: string }) {
+export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsKey: string; mapId: string }) {
   const [data, setData] = useState<EventBundle | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<'places' | 'route'>('places');
@@ -216,6 +216,8 @@ export default function EventApp({ slug }: { slug: string }) {
       <main className={`mapwrap ${collapsed ? 'collapsed' : ''}`}>
         <div className="stage">
           <HostingMap
+            apiKey={mapsKey}
+            mapId={mapId}
             plan={plan}
             me={me}
             people={people}

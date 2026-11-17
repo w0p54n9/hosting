@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { api, joinLocal, setStored, splitLocal } from '@/lib/client';
 import type { EventKind, MidpointMode } from '@/lib/types';
 
@@ -23,7 +23,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function create(e: React.FormEvent) {
+  async function create(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);

@@ -6,6 +6,8 @@ import { decodePolyline } from '@/lib/client';
 import type { Me, MyTrip, Plan, PublicPerson } from '@/lib/types';
 
 interface Props {
+  apiKey: string;
+  mapId: string;
   plan: Plan;
   me: Me | null;
   people: PublicPerson[];
@@ -15,17 +17,14 @@ interface Props {
   onSelectVenue: (placeId: string) => void;
 }
 
-const BROWSER_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY;
-const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || 'DEMO_MAP_ID';
-
 export default function HostingMap(props: Props) {
-  if (!BROWSER_KEY) {
-    return <div className="mapmissing">Add NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY to .env.local to show the map.</div>;
+  if (!props.apiKey) {
+    return <div className="mapmissing">The map needs GOOGLE_MAPS_BROWSER_KEY in the server settings.</div>;
   }
   return (
-    <APIProvider apiKey={BROWSER_KEY}>
+    <APIProvider apiKey={props.apiKey}>
       <Map
-        mapId={MAP_ID}
+        mapId={props.mapId}
         defaultCenter={{ lat: 43.6532, lng: -79.3832 }}
         defaultZoom={11}
         gestureHandling="greedy"

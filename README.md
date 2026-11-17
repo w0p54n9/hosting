@@ -50,8 +50,29 @@ npm run dev                  # http://localhost:3000
 ```
 Create an outing, copy the invite link, open it in another browser (or private window) to join as a second person.
 
-### 4. Deploy
-The easiest route is [Vercel](https://vercel.com): import the repo, add the same environment variables, deploy. Add your Vercel domain to the browser key's referrer list.
+### 4. Deploy on cPanel (WHC)
+Every push to `main` triggers the **Build for WHC** GitHub Action, which builds the app and publishes a
+ready-to-run copy to the `deploy` branch. The server never builds anything.
+
+One-time setup in cPanel:
+1. **Domains** → create the subdomain (e.g. `hosting.wai-yuan.com`).
+2. **Git Version Control** → Create → Clone URL `https://github.com/w0p54n9/hosting.git`,
+   repository path `hosting-app`. Then **Manage** → switch *Checked-Out Branch* to `deploy`.
+3. **Setup Node.js App** → Create Application:
+   - Node.js version: 20 (or newer)
+   - Application mode: Production
+   - Application root: `hosting-app`
+   - Application URL: the subdomain
+   - Application startup file: `app.js`
+   - Environment variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_MAPS_SERVER_KEY`,
+     `GOOGLE_MAPS_BROWSER_KEY`, `GOOGLE_MAP_ID`
+   - Don't click "Run NPM Install". Nothing needs installing.
+4. **SSL/TLS Status** → make sure the subdomain has a certificate (AutoSSL).
+
+To ship an update: **Git Version Control → Manage → Pull or Deploy → Update from Remote**, then
+**Setup Node.js App → Restart**.
+
+Prefer Vercel? Import the repo there and add the same environment variables. No `deploy` branch needed.
 
 ## Costs (rough)
 Each time the group's inputs change (someone joins, moves, changes role or likes, or the host changes the type or mode), the server recomputes:

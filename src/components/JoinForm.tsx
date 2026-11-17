@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, setStored } from '@/lib/client';
 import { ACTIVITIES, FOOD, ROLES } from '@/lib/categories';
 import type { Me, Role } from '@/lib/types';
@@ -33,7 +33,7 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
 
   const toggle = (k: string) => setLikes((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
 
-  async function save(e: React.FormEvent) {
+  async function save(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (!name.trim()) return setError('Add your name');

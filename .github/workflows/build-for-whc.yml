@@ -1,0 +1,65 @@
+# Builds the app on every push to main and publishes a ready-to-run copy to the
+# `deploy` branch. The WHC server pulls that branch, so it never has to build
+# anything itself (shared hosting tends to run out of memory building Next.js).
+
+name: Build for WHC
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-for-whc
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Assemble the ready-to-run app
+        run: |
+          rm -rf dist && mkdir -p dist
+          cp -R .next/standalone dist/standalone
+          cp -R .next/static dist/standalone/.next/static
+          if [ -d public ]; then cp -R public dist/standalone/public; fi
+          rm -f dist/standalone/.env*
+          cp deploy/app.js deploy/package.json deploy/README.md dist/
+          echo "$GITHUB_SHA" > dist/BUILD_COMMIT
+
+      - name: Publish to the deploy branch
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          URL="https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          # Keep history linear so the server can do a plain `git pull`.
+          if git clone --quiet --depth 1 --branch deploy "$URL" out; then
+            echo "Updating existing deploy branch"
+          else
+            mkdir out && cd out && git init -q -b deploy && git remote add origin "$URL" && cd ..
+          fi
+          cd out
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R ../dist/. .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -f
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -q -m "Build ${GITHUB_SHA::7}"
+          git push origin deploy
