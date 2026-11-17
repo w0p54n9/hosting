@@ -39,7 +39,7 @@ jobs:
           cp -R .next/static dist/standalone/.next/static
           if [ -d public ]; then cp -R public dist/standalone/public; fi
           rm -f dist/standalone/.env*
-          cp deploy/app.js deploy/package.json deploy/README.md dist/
+          cp deploy/app.js deploy/package.json deploy/README.md deploy/restart-server.js dist/
           echo "$GITHUB_SHA" > dist/BUILD_COMMIT
 
       - name: Publish to the deploy branch
