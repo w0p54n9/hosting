@@ -1,12 +1,13 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
+  "/api/cache/purge/route": "app/api/cache/purge/route.js",
   "/api/events/[slug]/availability/route": "app/api/events/[slug]/availability/route.js",
-  "/api/events/[slug]/participants/me/route": "app/api/events/[slug]/participants/me/route.js",
-  "/api/events/[slug]/route": "app/api/events/[slug]/route.js",
   "/api/events/[slug]/participants/route": "app/api/events/[slug]/participants/route.js",
-  "/api/places/autocomplete/route": "app/api/places/autocomplete/route.js",
+  "/api/events/[slug]/participants/me/route": "app/api/events/[slug]/participants/me/route.js",
   "/api/events/[slug]/trip/route": "app/api/events/[slug]/trip/route.js",
+  "/api/places/autocomplete/route": "app/api/places/autocomplete/route.js",
   "/api/events/route": "app/api/events/route.js",
+  "/api/events/[slug]/route": "app/api/events/[slug]/route.js",
   "/page": "app/page.js",
   "/e/[slug]/page": "app/e/[slug]/page.js"
 }
