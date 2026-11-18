@@ -38,6 +38,7 @@ export interface ParticipantRow {
   likes: string[];
   show_address?: boolean;
   start_from?: StartFrom;
+  place_vote?: string | null;
   token_hash: string;
   created_at: string;
 }
@@ -180,6 +181,7 @@ export function meView(l: Loaded, p: ParticipantRow): Me {
     likes: p.likes,
     showAddress: p.show_address === true,
     startFrom: startsAtOffice(l, p) ? 'office' : 'home',
+    placeVote: p.place_vote ?? null,
     address: loc?.address ?? null,
     location: loc ? toLatLng(loc) : null,
   };

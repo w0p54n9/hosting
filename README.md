@@ -34,7 +34,7 @@ Two things are worth knowing:
 
 ### 1. Supabase
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), then [`0002_availability_and_show_address.sql`](supabase/migrations/0002_availability_and_show_address.sql) and [`0003_office_start.sql`](supabase/migrations/0003_office_start.sql).
+2. Open **SQL Editor** and run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), then [`0002_availability_and_show_address.sql`](supabase/migrations/0002_availability_and_show_address.sql) [`0003_office_start.sql`](supabase/migrations/0003_office_start.sql) and [`0004_place_vote.sql`](supabase/migrations/0004_place_vote.sql).
 3. From **Project Settings → API** copy the project URL and the **service_role** key.
 
 ### 2. Google Maps Platform
@@ -99,6 +99,8 @@ src/components/EventApp.tsx            the event page: people | map | places & d
 ```
 
 ## Scoring
+Places are ordered by how many people are into them first. When several top places tie, everyone gets one vote among (up to 5 of) them, and votes order the tie. Within the same level of interest, this score orders them:
+
 For each candidate place:
 `score = 45 × (share of people into its category) − travel − 0.25 × (longest − average) + 4 × (rating − 4)`,
 where `travel` is the longest trip in *fairest* mode and the average trip in *least total* mode. In plain terms, a place everyone loves is worth about 45 extra minutes of travel. Tweak it in `derivePlan`.

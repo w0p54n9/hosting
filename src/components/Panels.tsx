@@ -21,11 +21,15 @@ export function PlacesPanel({
   focusId,
   onFocus,
   onChoose,
+  onVote,
+  onJoin,
 }: {
   data: EventBundle;
   focusId: string | null;
   onFocus: (id: string) => void;
   onChoose: (id: string) => void;
+  onVote: (placeId: string | null) => void;
+  onJoin: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const { plan, people, isOrganizer, event } = data;
@@ -38,13 +42,25 @@ export function PlacesPanel({
   if (!plan.venues.length) return <div className="empty">No places found near the midpoint yet. Try switching between Food and Activity.</div>;
 
   const shown = showAll ? plan.venues : plan.venues.slice(0, 8);
+  const inVote = new Set(plan.vote.open ? plan.vote.placeIds : []);
+  const myVote = data.me?.placeVote && inVote.has(data.me.placeVote) ? data.me.placeVote : null;
+  const votes = plan.vote.open ? plan.venues.filter((v) => inVote.has(v.placeId)).reduce((n, v) => n + v.voterIds.length, 0) : 0;
   return (
     <>
       <p className="explain">
-        Ranked by how many people are into it and how fair the trip is for everyone
-        ({event.midpointMode === 'fair' ? 'shortest longest trip' : 'least total travel'}).{' '}
-        {isOrganizer ? 'As host, you pick the final spot.' : 'The host picks the final spot.'}
+        Places most people are into come first, then the fairest trip ({event.midpointMode === 'fair' ? 'shortest longest trip' : 'least total travel'}).{' '}
+        {isOrganizer ? 'As host, you can lock in the final spot.' : 'The host can lock in the final spot.'}
       </p>
+      {plan.vote.open && (
+        <div className="votebanner">
+          <b>🗳️ It&apos;s a tie: vote for your pick</b>
+          <span>
+            {plan.vote.placeIds.length} places that {plan.vote.fans} of {total} people are into. The most votes goes to the top.
+            {' '}{votes} of {total} voted{myVote ? ', including you' : ''}.
+          </span>
+          {!data.me && <button className="btn small" onClick={onJoin}>Join to vote</button>}
+        </div>
+      )}
       {shown.map((v, i) => {
         const isSel = v.placeId === plan.selectedPlaceId;
         return (
@@ -67,6 +83,21 @@ export function PlacesPanel({
                 <span>avg <b>{v.avgMin} min</b></span>
                 <span>longest <b>{v.maxMin} min</b>{v.worstId ? ` (${nameOf(v.worstId)})` : ''}</span>
               </div>
+              {inVote.has(v.placeId) && (
+                <div className="voterow">
+                  {data.me && (
+                    <button
+                      className={`votebtn ${myVote === v.placeId ? 'on' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); onVote(myVote === v.placeId ? null : v.placeId); }}
+                      aria-pressed={myVote === v.placeId}
+                    >
+                      {myVote === v.placeId ? '✓ Your vote' : 'Vote'}
+                    </button>
+                  )}
+                  <span className="votecount">{v.voterIds.length} vote{v.voterIds.length === 1 ? '' : 's'}</span>
+                  {v.voterIds.length > 0 && <Stack ids={v.voterIds} people={people} />}
+                </div>
+              )}
               <div className="placeactions">
                 {isOrganizer && !isSel && (
                   <button className="btn small" onClick={(e) => { e.stopPropagation(); onChoose(v.placeId); }}>Make this the group pick</button>
@@ -76,7 +107,7 @@ export function PlacesPanel({
                 )}
               </div>
             </div>
-            {isSel && <span className="badge">{event.chosenPlaceId ? 'Group pick' : 'Top pick'}</span>}
+            {isSel && <span className="badge">{event.chosenPlaceId ? 'Group pick' : plan.vote.open ? 'Leading' : 'Top pick'}</span>}
           </div>
         );
       })}

@@ -178,7 +178,7 @@ export function derivePlan(l: Loaded, core: Core): Plan {
   const everyone = l.people; // everyone's likes count, address or not
   const fair = l.event.midpoint_mode === 'fair';
 
-  const ranked: RankedVenue[] = core.venues
+  const keen: RankedVenue[] = core.venues
     .map((v) => {
       const ts = ppl.map(({ p, loc, mode }) => ({ id: p.id, t: core.times[v.placeId]?.[p.id] ?? estMinutes(mode, loc, v.location) }));
       const avg = n ? ts.reduce((a, b) => a + b.t, 0) / n : 0;
@@ -192,6 +192,7 @@ export function derivePlan(l: Loaded, core: Core): Plan {
       return {
         ...v,
         fanIds,
+        voterIds: everyone.filter((p) => p.place_vote === v.placeId).map((p) => p.id),
         avgMin: Math.round(avg),
         maxMin: Math.round(max),
         worstId: worst?.id ?? null,
@@ -199,7 +200,22 @@ export function derivePlan(l: Loaded, core: Core): Plan {
         kmFromMidpoint: core.midpoint ? +haversineKm(core.midpoint, v.location).toFixed(1) : 0,
       };
     })
-    .sort((a, b) => b.score - a.score);
+    // Most-liked first; among equally liked places, the fairer trip first.
+    .sort((a, b) => b.fanIds.length - a.fanIds.length || b.score - a.score);
+
+  // If the most-liked places are tied, everyone votes among the best few of them.
+  const MAX_IN_VOTE = 5;
+  const topFans = keen[0]?.fanIds.length ?? 0;
+  const tied = keen.filter((v) => v.fanIds.length === topFans).slice(0, MAX_IN_VOTE);
+  const voteOpen = tied.length >= 2;
+  const tiedIds = new Set(tied.map((v) => v.placeId));
+  const ranked: RankedVenue[] = voteOpen
+    ? [
+        ...[...tied].sort((a, b) => b.voterIds.length - a.voterIds.length || b.score - a.score),
+        ...keen.filter((v) => !tiedIds.has(v.placeId)),
+      ]
+    : keen;
+
 
   const selected = ranked.find((v) => v.placeId === l.event.chosen_place_id) ?? ranked[0] ?? null;
   const estimates: Record<string, PersonEstimate> = {};
@@ -248,11 +264,12 @@ export function derivePlan(l: Loaded, core: Core): Plan {
     carpools,
     unmatchedRiderIds,
     estimates,
+    vote: { open: voteOpen, placeIds: voteOpen ? tied.map((v) => v.placeId) : [], fans: topFans },
   };
 }
 
 export function emptyPlan(error?: string): Plan {
-  return { midpoint: null, midpointMaxMin: null, venues: [], selectedPlaceId: null, carpools: [], unmatchedRiderIds: [], estimates: {}, error };
+  return { midpoint: null, midpointMaxMin: null, venues: [], selectedPlaceId: null, carpools: [], unmatchedRiderIds: [], estimates: {}, vote: { open: false, placeIds: [], fans: 0 }, error };
 }
 
 export async function planFor(l: Loaded): Promise<Plan> {

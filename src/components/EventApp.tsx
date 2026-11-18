@@ -106,6 +106,15 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
     }
   }
 
+  async function votePlace(placeId: string | null) {
+    try {
+      await api(`/api/events/${slug}/vote`, slug, { method: 'PUT', json: { placeId } });
+      await load();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
+
   async function setStartFrom(startFrom: StartFrom) {
     if (!me || me.startFrom === startFrom) return;
     try {
@@ -362,7 +371,14 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
           </div>
           <div className="pbody">
             {tab === 'places' ? (
-              <PlacesPanel data={data} focusId={focusId} onFocus={setFocusId} onChoose={(id) => patchEvent({ chosenPlaceId: id })} />
+              <PlacesPanel
+                data={data}
+                focusId={focusId}
+                onFocus={setFocusId}
+                onChoose={(id) => patchEvent({ chosenPlaceId: id })}
+                onVote={votePlace}
+                onJoin={() => setEditing(true)}
+              />
             ) : (
               <DirectionsPanel data={data} trip={trip} loading={tripLoading} error={tripError} onJoin={() => setEditing(true)} />
             )}

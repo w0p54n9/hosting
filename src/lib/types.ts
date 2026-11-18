@@ -64,6 +64,7 @@ export interface Venue {
 
 export interface RankedVenue extends Venue {
   fanIds: string[];
+  voterIds: string[]; // people who voted for this place (only counted while it's in a tie)
   avgMin: number;
   maxMin: number;
   worstId: string | null;
@@ -92,6 +93,8 @@ export interface Plan {
   carpools: Carpool[];
   unmatchedRiderIds: string[];
   estimates: Record<string, PersonEstimate>;
+  /** When several top places are equally liked, everyone votes among them. */
+  vote: { open: boolean; placeIds: string[]; fans: number };
   error?: string;
 }
 
@@ -103,6 +106,7 @@ export interface Me {
   likes: string[];
   showAddress: boolean;
   startFrom: StartFrom;
+  placeVote: string | null;
   address: string | null;
   location: LatLng | null;
 }
