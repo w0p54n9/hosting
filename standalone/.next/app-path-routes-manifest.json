@@ -1,14 +1,16 @@
 {
   "/_not-found/page": "/_not-found",
   "/api/cache/purge/route": "/api/cache/purge",
+  "/api/events/[slug]/participants/[id]/route": "/api/events/[slug]/participants/[id]",
   "/api/events/[slug]/availability/route": "/api/events/[slug]/availability",
-  "/api/events/[slug]/participants/route": "/api/events/[slug]/participants",
   "/api/events/[slug]/participants/me/route": "/api/events/[slug]/participants/me",
+  "/api/events/[slug]/participants/route": "/api/events/[slug]/participants",
+  "/api/events/[slug]/place-info/route": "/api/events/[slug]/place-info",
   "/api/events/[slug]/trip/route": "/api/events/[slug]/trip",
   "/api/events/[slug]/vote/route": "/api/events/[slug]/vote",
   "/api/events/route": "/api/events",
-  "/api/events/[slug]/route": "/api/events/[slug]",
   "/api/places/autocomplete/route": "/api/places/autocomplete",
-  "/e/[slug]/page": "/e/[slug]",
-  "/page": "/"
+  "/api/events/[slug]/route": "/api/events/[slug]",
+  "/page": "/",
+  "/e/[slug]/page": "/e/[slug]"
 }

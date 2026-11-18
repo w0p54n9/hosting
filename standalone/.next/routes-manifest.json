@@ -63,6 +63,23 @@
       "namedRegex": "^/api/events/(?<nxtPslug>[^/]+?)/participants/me(?:/)?$"
     },
     {
+      "page": "/api/events/[slug]/participants/[id]",
+      "regex": "^/api/events/([^/]+?)/participants/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPslug": "nxtPslug",
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/events/(?<nxtPslug>[^/]+?)/participants/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/api/events/[slug]/place-info",
+      "regex": "^/api/events/([^/]+?)/place\\-info(?:/)?$",
+      "routeKeys": {
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/api/events/(?<nxtPslug>[^/]+?)/place\\-info(?:/)?$"
+    },
+    {
       "page": "/api/events/[slug]/trip",
       "regex": "^/api/events/([^/]+?)/trip(?:/)?$",
       "routeKeys": {
