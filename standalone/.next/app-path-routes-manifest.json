@@ -1,12 +1,12 @@
 {
   "/_not-found/page": "/_not-found",
   "/api/events/[slug]/availability/route": "/api/events/[slug]/availability",
-  "/api/events/[slug]/participants/route": "/api/events/[slug]/participants",
   "/api/events/[slug]/participants/me/route": "/api/events/[slug]/participants/me",
+  "/api/events/[slug]/participants/route": "/api/events/[slug]/participants",
   "/api/events/[slug]/trip/route": "/api/events/[slug]/trip",
   "/api/events/route": "/api/events",
-  "/api/places/autocomplete/route": "/api/places/autocomplete",
   "/api/events/[slug]/route": "/api/events/[slug]",
+  "/api/places/autocomplete/route": "/api/places/autocomplete",
   "/page": "/",
   "/e/[slug]/page": "/e/[slug]"
 }

@@ -12,7 +12,7 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-c6c7371fb0b289ac.js",
-      "static/css/1b6913ec71ce91a7.css",
+      "static/css/b23c2daa3634b122.css",
       "static/chunks/app/layout-2eea0b171af49bd0.js"
     ],
     "/api/events/[slug]/availability/route": [
@@ -22,19 +22,19 @@
       "static/chunks/main-app-c6c7371fb0b289ac.js",
       "static/chunks/app/api/events/[slug]/availability/route-57ea54c49b5ff4d9.js"
     ],
-    "/api/events/[slug]/participants/route": [
-      "static/chunks/webpack-d4b510c1096e1e9a.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-73938ce8a8eac1ad.js",
-      "static/chunks/main-app-c6c7371fb0b289ac.js",
-      "static/chunks/app/api/events/[slug]/participants/route-57ea54c49b5ff4d9.js"
-    ],
     "/api/events/[slug]/participants/me/route": [
       "static/chunks/webpack-d4b510c1096e1e9a.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-c6c7371fb0b289ac.js",
       "static/chunks/app/api/events/[slug]/participants/me/route-57ea54c49b5ff4d9.js"
+    ],
+    "/api/events/[slug]/participants/route": [
+      "static/chunks/webpack-d4b510c1096e1e9a.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-73938ce8a8eac1ad.js",
+      "static/chunks/main-app-c6c7371fb0b289ac.js",
+      "static/chunks/app/api/events/[slug]/participants/route-57ea54c49b5ff4d9.js"
     ],
     "/api/events/[slug]/trip/route": [
       "static/chunks/webpack-d4b510c1096e1e9a.js",
@@ -50,19 +50,19 @@
       "static/chunks/main-app-c6c7371fb0b289ac.js",
       "static/chunks/app/api/events/route-57ea54c49b5ff4d9.js"
     ],
-    "/api/places/autocomplete/route": [
-      "static/chunks/webpack-d4b510c1096e1e9a.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-73938ce8a8eac1ad.js",
-      "static/chunks/main-app-c6c7371fb0b289ac.js",
-      "static/chunks/app/api/places/autocomplete/route-57ea54c49b5ff4d9.js"
-    ],
     "/api/events/[slug]/route": [
       "static/chunks/webpack-d4b510c1096e1e9a.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-c6c7371fb0b289ac.js",
       "static/chunks/app/api/events/[slug]/route-57ea54c49b5ff4d9.js"
+    ],
+    "/api/places/autocomplete/route": [
+      "static/chunks/webpack-d4b510c1096e1e9a.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-73938ce8a8eac1ad.js",
+      "static/chunks/main-app-c6c7371fb0b289ac.js",
+      "static/chunks/app/api/places/autocomplete/route-57ea54c49b5ff4d9.js"
     ],
     "/page": [
       "static/chunks/webpack-d4b510c1096e1e9a.js",
