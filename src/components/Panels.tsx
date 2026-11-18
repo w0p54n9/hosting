@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { PRICE, fmtDay, fmtTime } from '@/lib/client';
-import { MODE_LABEL, iconFor } from '@/lib/categories';
+import { MODE_LABEL, PRICE_CAPS, iconFor } from '@/lib/categories';
 import type { EventBundle, MyTrip, PublicPerson } from '@/lib/types';
 
 function Stack({ ids, people }: { ids: string[]; people: PublicPerson[] }) {
@@ -21,6 +21,7 @@ export function PlacesPanel({
   focusId,
   onFocus,
   onChoose,
+  onUnchoose,
   onVote,
   onJoin,
 }: {
@@ -28,13 +29,15 @@ export function PlacesPanel({
   focusId: string | null;
   onFocus: (id: string) => void;
   onChoose: (id: string) => void;
+  onUnchoose: () => void;
   onVote: (placeId: string | null) => void;
   onJoin: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const { plan, people, isOrganizer, event } = data;
-  const located = people.filter((p) => p.hasLocation).length;
-  const total = people.length;
+  const coming = people.filter((p) => p.rsvp !== 'no');
+  const located = coming.filter((p) => p.hasLocation).length;
+  const total = coming.length;
   const nameOf = (id: string | null) => people.find((p) => p.id === id)?.name ?? '';
 
   if (plan.error) return <div className="note warn">{plan.error}</div>;
@@ -45,12 +48,21 @@ export function PlacesPanel({
   const inVote = new Set(plan.vote.open ? plan.vote.placeIds : []);
   const myVote = data.me?.placeVote && inVote.has(data.me.placeVote) ? data.me.placeVote : null;
   const votes = plan.vote.open ? plan.venues.filter((v) => inVote.has(v.placeId)).reduce((n, v) => n + v.voterIds.length, 0) : 0;
+  const filters = [
+    data.needs.vegetarian || data.needs.vegan ? 'vegetarian options' : '',
+    data.needs.step_free ? 'step-free entrance' : '',
+    event.maxPrice ? PRICE_CAPS.find((c) => c.key === event.maxPrice)?.label ?? '' : '',
+  ].filter(Boolean);
   return (
     <>
       <p className="explain">
         Places most people are into come first, then the fairest trip ({event.midpointMode === 'fair' ? 'shortest longest trip' : 'least total travel'}).{' '}
-        {isOrganizer ? 'As host, you can lock in the final spot.' : 'The host can lock in the final spot.'}
+        {event.finalized ? 'The host has locked in the plan.' : isOrganizer ? 'As host, you can pick the final spot.' : 'The host can pick the final spot.'}
       </p>
+      {filters.length > 0 && <p className="explain filters">Only showing places with: <b>{filters.join(' · ')}</b></p>}
+      {isOrganizer && event.chosenPlaceId && !event.finalized && (
+        <p className="explain">You picked the place, so voting is closed. <button className="linkbtn" style={{ marginTop: 0 }} onClick={onUnchoose}>Let the group decide again</button></p>
+      )}
       {plan.vote.open && (
         <div className="votebanner">
           <b>🗳️ It&apos;s a tie: vote for your pick</b>
@@ -74,6 +86,7 @@ export function PlacesPanel({
               <div className="pmeta">
                 {v.category}
                 {v.rating ? ` · ★ ${v.rating.toFixed(1)}` : ''} · {v.kmFromMidpoint} km from midpoint
+                {v.veg ? ' · 🥕 veg options' : ''}{v.stepFree ? ' · ♿ step-free' : ''}
               </div>
               <div className="fit">
                 {v.fanIds.length > 0 && <Stack ids={v.fanIds} people={people} />}
@@ -99,7 +112,7 @@ export function PlacesPanel({
                 </div>
               )}
               <div className="placeactions">
-                {isOrganizer && !isSel && (
+                {isOrganizer && !isSel && !event.finalized && (
                   <button className="btn small" onClick={(e) => { e.stopPropagation(); onChoose(v.placeId); }}>Make this the group pick</button>
                 )}
                 {v.mapsUri && (
@@ -107,7 +120,7 @@ export function PlacesPanel({
                 )}
               </div>
             </div>
-            {isSel && <span className="badge">{event.chosenPlaceId ? 'Group pick' : plan.vote.open ? 'Leading' : 'Top pick'}</span>}
+            {isSel && <span className="badge">{event.finalized ? 'Final' : event.chosenPlaceId ? 'Host pick' : plan.vote.open ? 'Leading' : 'Top pick'}</span>}
           </div>
         );
       })}
@@ -139,6 +152,10 @@ export function DirectionsPanel({
       </div>
     );
   }
+  if (data.me.rsvp === 'no') {
+    return <div className="empty">You said you can&apos;t make it, so there&apos;s no route for you. Change your answer at the top any time.</div>;
+  }
+  if (data.event.addressesPurged) return <div className="empty">This outing is over. Addresses were deleted 3 days after it.</div>;
   if (!data.me.location) {
     return (
       <div className="empty">
@@ -181,17 +198,27 @@ export function DirectionsPanel({
         <div className={`leave ${trip.unmatched ? 'warn' : ''}`}>
           <div className="big">{fmtTime(trip.leaveAt)}</div>
           <div className="sub">
-            {trip.fromOffice ? 'leave the office' : 'leave home'}<br />
+            {trip.fromOffice ? 'leave the office' : data.me.startFrom === 'other' ? 'set off' : 'leave home'}<br />
             {m.icon} {trip.minutes} min {m.label}{trip.km ? ` · ${trip.km} km` : ''}
             {trip.pickups?.length ? ` · ${trip.pickups.length} pickup${trip.pickups.length > 1 ? 's' : ''}` : ''}
           </div>
         </div>
       )}
 
+      {trip.driverPhone && (
+        <div className="note" style={{ marginTop: 0, marginBottom: 12 }}>
+          📞 {trip.driverName}: <a href={`tel:${trip.driverPhone.replace(/[^\d+]/g, '')}`}>{trip.driverPhone}</a> ·{' '}
+          <a href={`sms:${trip.driverPhone.replace(/[^\d+]/g, '')}`}>Text</a>
+        </div>
+      )}
+
       {trip.pickups && trip.pickups.length > 0 && (
         <div className="note" style={{ marginTop: 0, marginBottom: 12 }}>
           {trip.pickups.map((p) => (
-            <div key={p.name + p.at}>🙋 <b>{p.name}</b> at {fmtTime(p.at)}: {p.address}</div>
+            <div key={p.name + p.at} className="pickup">
+              🙋 <b>{p.name}</b> at {fmtTime(p.at)}: {p.address}
+              {p.phone && <> · <a href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}>{p.phone}</a></>}
+            </div>
           ))}
           <div style={{ marginTop: 6 }}>🔒 They shared their address with you only because you&apos;re their driver.</div>
         </div>

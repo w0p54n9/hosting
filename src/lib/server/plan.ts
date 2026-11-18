@@ -3,8 +3,8 @@ import { createHash } from 'crypto';
 import { db } from './supabase';
 import { routeMatrix, searchText } from './google';
 import { driveMinutesForKm, estMinutes, findMidpoint, haversineKm, timingFor } from './geo';
-import { originOf, usesLocation, type Loaded, type ParticipantRow } from './data';
-import { categoriesFor, travelModeOf } from '../categories';
+import { originOf, placeFilters, planning, usesLocation, type Loaded, type ParticipantRow } from './data';
+import { PRICE_CAPS, categoriesFor, travelModeOf } from '../categories';
 import type { LatLng, PersonEstimate, Plan, RankedVenue, TravelMode, Venue } from '../types';
 
 /** The expensive part (Google calls), cached per event until its inputs change. */
@@ -29,11 +29,12 @@ function inputHash(l: Loaded): string {
   // Everyone's likes count (even people not sharing an address), so they're part of the hash too.
   const likes = l.people.map((p) => [p.id, [...p.likes].sort()]);
   return createHash('sha256')
-    .update(JSON.stringify([l.event.kind, l.event.midpoint_mode, l.event.starts_at, people, likes]))
+    .update(JSON.stringify([l.event.kind, l.event.midpoint_mode, l.event.starts_at, people, likes, placeFilters(l)]))
     .digest('hex');
 }
 
-export async function getCore(l: Loaded): Promise<Core> {
+export async function getCore(full: Loaded): Promise<Core> {
+  const l = planning(full);
   const hash = inputHash(l);
   const { data: cached } = await db()
     .from('plan_cache')
@@ -74,10 +75,22 @@ async function buildCore(l: Loaded): Promise<Core> {
     if (!wanted.includes(c)) wanted.push(c);
   }
 
+  // Group needs and the host's budget: ask Google, then drop places it says don't fit.
+  // (Places Google knows nothing about are kept.)
+  const f = placeFilters(l);
+  const cap = PRICE_CAPS.find((p) => p.key === f.maxPrice);
+  const fits = (v: Omit<Venue, 'category'>) =>
+    !(f.veg && v.veg === false) && !(f.stepFree && v.stepFree === false) && !(cap && v.priceLevel && !cap.levels.includes(v.priceLevel) && v.priceLevel !== 'PRICE_LEVEL_FREE');
+
   const results = await Promise.all(
     wanted.map((c) =>
-      searchText(c.query, mid.point, radiusM, 5)
-        .then((list) => list.map((v) => ({ ...v, category: c.key })))
+      // Food: let Google filter by price. Activities often have no price level, so filter afterwards instead.
+      searchText(c.query, mid.point, radiusM, f.veg || f.stepFree || cap ? 8 : 5, {
+        veg: f.veg,
+        stepFree: f.stepFree,
+        priceLevels: cap && l.event.kind === 'food' ? cap.levels : undefined,
+      })
+        .then((list) => list.filter(fits).slice(0, 5).map((v) => ({ ...v, category: c.key })))
         .catch((err) => {
           console.error('searchText failed', c.key, err);
           return [] as Venue[];
@@ -130,7 +143,8 @@ export interface CarpoolMatch {
 }
 
 /** Greedy: give each rider to the driver with the smallest detour, then order pickups nearest-first. */
-export function matchCarpools(l: Loaded, venue: LatLng): CarpoolMatch {
+export function matchCarpools(full: Loaded, venue: LatLng): CarpoolMatch {
+  const l = planning(full);
   const byId = new Map(l.people.map((p) => [p.id, p]));
   const loc = (id: string) => originOf(l, byId.get(id)!)!;
   const drivers = l.people.filter((p) => p.role === 'driver' && p.seats > 0 && usesLocation(l, p));
@@ -172,7 +186,8 @@ export function matchCarpools(l: Loaded, venue: LatLng): CarpoolMatch {
 
 // ---------- ranking ----------
 
-export function derivePlan(l: Loaded, core: Core): Plan {
+export function derivePlan(full: Loaded, core: Core): Plan {
+  const l = planning(full);
   const ppl = located(l); // people whose address is in use: travel times
   const n = ppl.length;
   const everyone = l.people; // everyone's likes count, address or not
@@ -207,9 +222,11 @@ export function derivePlan(l: Loaded, core: Core): Plan {
   const MAX_IN_VOTE = 5;
   const topFans = keen[0]?.fanIds.length ?? 0;
   const tied = keen.filter((v) => v.fanIds.length === topFans).slice(0, MAX_IN_VOTE);
-  const voteOpen = tied.length >= 2;
+  const tie = tied.length >= 2;
+  // The vote closes once the host picks a place (or locks in the plan).
+  const voteOpen = tie && !l.event.chosen_place_id && !l.event.finalized_at;
   const tiedIds = new Set(tied.map((v) => v.placeId));
-  const ranked: RankedVenue[] = voteOpen
+  const ranked: RankedVenue[] = tie
     ? [
         ...[...tied].sort((a, b) => b.voterIds.length - a.voterIds.length || b.score - a.score),
         ...keen.filter((v) => !tiedIds.has(v.placeId)),
@@ -256,7 +273,10 @@ export function derivePlan(l: Loaded, core: Core): Plan {
     }
   }
 
+  const f = placeFilters(l);
+  const noFit = !core.venues.length && n > 0 && (f.veg || f.stepFree || !!f.maxPrice);
   return {
+    ...(noFit ? { error: 'No places nearby fit everyone’s needs and the budget. The host can raise the budget.' } : {}),
     midpoint: core.midpoint,
     midpointMaxMin: core.midpointMaxMin,
     venues: ranked,

@@ -1,9 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import AddressInput, { type AddressValue } from '@/components/AddressInput';
-import { api, joinLocal, setStored, splitLocal } from '@/lib/client';
+import { api, fmtDay, joinLocal, listOutings, setStored, splitLocal, type SavedOuting } from '@/lib/client';
 import type { EventKind, MidpointMode } from '@/lib/types';
 
 function nextFriday7pm(): string {
@@ -32,6 +32,8 @@ export default function Home() {
   const [mode, setMode] = useState<MidpointMode>('fair');
   const [office, setOffice] = useState<AddressValue>({ placeId: null, label: '' });
   const officeSession = useMemo(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random())), []);
+  const [outings, setOutings] = useState<SavedOuting[]>([]);
+  useEffect(() => setOutings(listOutings()), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +63,22 @@ export default function Home() {
 
   return (
     <main className="landing">
+      <div className="landingcol">
+      {outings.length > 0 && (
+        <div className="sheet outings">
+          <span className="lbl">Your outings</span>
+          {outings.map((o) => {
+            const past = new Date(o.startsAt).getTime() < Date.now() - 6 * 3600_000;
+            return (
+              <a key={o.slug} className={`outing ${past ? 'past' : ''}`} href={`/e/${o.slug}`}>
+                <b>{o.title}</b>
+                <span>{fmtDay(o.startsAt)}{o.host ? ' · hosting' : ''}{past ? ' · done' : ''}</span>
+              </a>
+            );
+          })}
+          <div className="hint">Saved on this device only.</div>
+        </div>
+      )}
       <form className="sheet" onSubmit={create}>
         <h1>GOING <span>OUT</span></h1>
         <div className="tag">Plan the night, not the logistics.</div>
@@ -119,6 +137,7 @@ export default function Home() {
         </button>
         {error && <div className="error">{error}</div>}
       </form>
+      </div>
     </main>
   );
 }

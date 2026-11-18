@@ -1,7 +1,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
-import { ALL_KEYS } from '../categories';
-import type { EventKind, MidpointMode, Role, StartFrom } from '../types';
+import { ALL_KEYS, NEED_KEYS, PRICE_CAPS } from '../categories';
+import type { EventKind, MidpointMode, Need, PriceCap, Role, Rsvp, StartFrom } from '../types';
 import { addDays, isDay, isTime } from '../dates';
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
@@ -89,4 +89,28 @@ export function cleanDays(v: unknown, today: string): string[] {
   return [...new Set(v.filter(isDay))].filter((d) => d >= today && d <= last).sort().slice(0, 120);
 }
 
-export const cleanStartFrom = (v: unknown): StartFrom => (v === 'office' ? 'office' : 'home');
+export const cleanStartFrom = (v: unknown): StartFrom => (v === 'office' || v === 'other' ? v : 'home');
+
+export function cleanRsvp(v: unknown): Rsvp {
+  if (v === 'going' || v === 'maybe' || v === 'no') return v;
+  throw new HttpError(400, 'Choose going, maybe or can’t make it');
+}
+
+export const cleanNeeds = (v: unknown): Need[] =>
+  Array.isArray(v) ? [...new Set(v.filter((x): x is Need => typeof x === 'string' && NEED_KEYS.has(x as Need)))] : [];
+
+/** Optional phone number: digits and the usual punctuation only; empty clears it. */
+export function cleanPhone(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
+  if (!s) return null;
+  if (!/^\+?[0-9 ().-]{7,24}$/.test(s) || s.replace(/\D/g, '').length < 7) throw new HttpError(400, 'That phone number doesn’t look right');
+  return s;
+}
+
+export function cleanPriceCap(v: unknown): PriceCap | null {
+  if (v === null || v === '') return null;
+  if (PRICE_CAPS.some((p) => p.key === v)) return v as PriceCap;
+  throw new HttpError(400, 'Pick a budget');
+}
+
+export const cleanOptionalDay = (v: unknown): string | null => (v === null || v === '' ? null : cleanDay(v));

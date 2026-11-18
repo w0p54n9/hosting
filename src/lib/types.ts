@@ -13,7 +13,10 @@ export interface LatLng {
 }
 
 export type DateStatus = 'set' | 'voting'; // 'voting' = everyone marks the days they're free
-export type StartFrom = 'home' | 'office';
+export type StartFrom = 'home' | 'office' | 'other'; // 'other' = a private custom starting address
+export type Rsvp = 'going' | 'maybe' | 'no';
+export type Need = 'vegetarian' | 'vegan' | 'halal' | 'gluten_free' | 'nut_allergy' | 'step_free';
+export type PriceCap = 'PRICE_LEVEL_INEXPENSIVE' | 'PRICE_LEVEL_MODERATE' | 'PRICE_LEVEL_EXPENSIVE';
 
 export interface PublicEvent {
   slug: string;
@@ -27,6 +30,11 @@ export interface PublicEvent {
   timezone: string; // IANA, e.g. America/Toronto
   /** Shared starting point people can choose instead of home (set by the host). */
   office: { address: string; location: LatLng } | null;
+  /** Host has locked in the day and the place: this is the final plan. */
+  finalized: boolean;
+  replyBy: string | null; // 'YYYY-MM-DD'
+  maxPrice: PriceCap | null;
+  addressesPurged: boolean;
 }
 
 /** Who is free on which day ('YYYY-MM-DD' -> participant ids). */
@@ -45,6 +53,7 @@ export interface PublicPerson {
   color: string;
   hasLocation: boolean;
   startFrom: StartFrom;
+  rsvp: Rsvp;
   /** Only present when this person switched on "Show my address to the group". */
   address?: string;
   home?: LatLng;
@@ -60,6 +69,8 @@ export interface Venue {
   ratingCount?: number;
   priceLevel?: string;
   mapsUri?: string;
+  veg?: boolean; // serves vegetarian food (only checked when someone needs it)
+  stepFree?: boolean; // wheelchair-accessible entrance (only checked when someone needs it)
 }
 
 export interface RankedVenue extends Venue {
@@ -98,6 +109,25 @@ export interface Plan {
   error?: string;
 }
 
+/** Group-level counts only (never who), for booking and for filtering places. */
+export type NeedsSummary = Partial<Record<Need, number>>;
+
+/** Who still has something to do. Names only, nothing private. */
+export interface Progress {
+  noDays: string[]; // ids of people (going/maybe) who haven't marked any days
+  noVote: string[]; // ids of people who haven't voted while a vote is open
+  going: number;
+  maybe: number;
+  no: number;
+}
+
+export interface PlaceInfo {
+  phone?: string;
+  website?: string;
+  reservable?: boolean;
+  hours?: string[];
+}
+
 export interface Me {
   id: string;
   name: string;
@@ -107,6 +137,10 @@ export interface Me {
   showAddress: boolean;
   startFrom: StartFrom;
   placeVote: string | null;
+  rsvp: Rsvp;
+  phone: string | null;
+  needs: Need[];
+  altStartAddress: string | null;
   address: string | null;
   location: LatLng | null;
 }
@@ -118,6 +152,8 @@ export interface EventBundle {
   me: Me | null;
   isOrganizer: boolean;
   availability: Availability;
+  needs: NeedsSummary;
+  progress: Progress;
 }
 
 export interface TripStep {
@@ -132,6 +168,7 @@ export interface Pickup {
   address: string;
   at: string;
   location: LatLng;
+  phone?: string; // only if that rider added one
 }
 
 export interface MyTrip {
@@ -144,6 +181,7 @@ export interface MyTrip {
   steps: TripStep[];
   pickups?: Pickup[];
   driverName?: string;
+  driverPhone?: string; // only if the driver added one
   pickupAt?: string;
   unmatched?: boolean;
   estimated?: boolean;

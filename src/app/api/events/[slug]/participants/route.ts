@@ -2,7 +2,10 @@ import { db } from '@/lib/server/supabase';
 import { loadEvent } from '@/lib/server/data';
 import { placeLocation } from '@/lib/server/google';
 import { hashToken, newToken } from '@/lib/server/tokens';
-import { cleanLikes, cleanRole, cleanSeats, cleanStartFrom, cleanText, fail, handle, json, readJson } from '@/lib/server/http';
+import {
+  cleanLikes, cleanNeeds, cleanPhone, cleanRole, cleanRsvp, cleanSeats, cleanStartFrom, cleanText, fail, handle, json, readJson,
+} from '@/lib/server/http';
+import { syncPlannedDate } from '@/lib/server/schedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,25 +28,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     const role = cleanRole(body.role);
     const seats = cleanSeats(body.seats, role);
     const likes = cleanLikes(body.likes);
-    const placeId = cleanText(body.placeId, 'Address', 300);
+
     const sessionToken = typeof body.sessionToken === 'string' ? body.sessionToken.slice(0, 100) : undefined;
 
-    const place = await placeLocation(placeId, sessionToken);
+    const startFrom = cleanStartFrom(body.startFrom);
+    const rsvp = 'rsvp' in body ? cleanRsvp(body.rsvp) : 'going';
+    // The address is how the meeting spot is found. Someone who can't make it can say so without one.
+    const placeId = rsvp === 'no' && !body.placeId ? null : cleanText(body.placeId, 'Address', 300);
+    const phone = cleanPhone(body.phone);
+    const needs = cleanNeeds(body.needs);
+    const altPlaceId = startFrom === 'other' ? cleanText(body.altPlaceId, 'Starting address', 300) : null;
+
+    const [place, alt] = await Promise.all([
+      placeId ? placeLocation(placeId, sessionToken) : Promise.resolve(null),
+      altPlaceId ? placeLocation(altPlaceId) : Promise.resolve(null),
+    ]);
     const token = newToken();
 
     const row: Record<string, unknown> = { event_id: l.event.id, name, role, seats, likes, token_hash: hashToken(token) };
     if (body.showAddress === true) row.show_address = true;
-    if (cleanStartFrom(body.startFrom) === 'office') row.start_from = 'office';
+    if (startFrom !== 'home') row.start_from = startFrom;
+    if (alt) row.alt_start = { address: alt.address, lat: alt.location.lat, lng: alt.location.lng };
+    if (rsvp !== 'going') row.rsvp = rsvp;
+    if (phone) row.phone = phone;
+    if (needs.length) row.needs = needs;
     const { data: p, error } = await db().from('participants').insert(row).select('id').single<{ id: string }>();
     if (error) throw error;
 
-    const { error: e2 } = await db()
-      .from('participant_locations')
-      .insert({ participant_id: p.id, address: place.address, lat: place.location.lat, lng: place.location.lng });
+    const { error: e2 } = place
+      ? await db()
+          .from('participant_locations')
+          .insert({ participant_id: p.id, address: place.address, lat: place.location.lat, lng: place.location.lng })
+      : { error: null };
     if (e2) {
       await db().from('participants').delete().eq('id', p.id);
       throw e2;
     }
+    const fresh = await loadEvent(slug);
+    if (fresh) await syncPlannedDate(fresh).catch((err) => console.error('syncPlannedDate failed', err));
     return json({ participantId: p.id, token }, 201);
   });
 }

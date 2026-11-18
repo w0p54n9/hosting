@@ -1,4 +1,4 @@
-import type { EventKind, Role, TravelMode } from './types';
+import type { EventKind, Need, PriceCap, Role, Rsvp, TravelMode } from './types';
 
 export interface Category {
   key: string;   // what people pick and what is stored in `likes`
@@ -62,4 +62,27 @@ export const travelModeOf = (role: Role): TravelMode =>
 export const PERSON_COLORS = [
   '#ff6b4a', '#4da3ff', '#c08bff', '#36e3b4', '#ffc23d', '#ff5fae',
   '#a6e85a', '#8fb2ff', '#ff9a5c', '#4fdcf0', '#e0a3ff', '#ffe36b',
+];
+
+
+export const NEEDS: { key: Need; label: string; icon: string; filters: boolean }[] = [
+  { key: 'vegetarian', label: 'Vegetarian', icon: '🥕', filters: true },
+  { key: 'vegan', label: 'Vegan', icon: '🌱', filters: true },
+  { key: 'halal', label: 'Halal', icon: '🍖', filters: false },
+  { key: 'gluten_free', label: 'Gluten-free', icon: '🌾', filters: false },
+  { key: 'nut_allergy', label: 'Nut allergy', icon: '🥜', filters: false },
+  { key: 'step_free', label: 'Step-free entrance', icon: '♿', filters: true },
+];
+export const NEED_KEYS = new Set<Need>(NEEDS.map((n) => n.key));
+
+export const PRICE_CAPS: { key: PriceCap; label: string; levels: string[] }[] = [
+  { key: 'PRICE_LEVEL_INEXPENSIVE', label: '$ only', levels: ['PRICE_LEVEL_INEXPENSIVE'] },
+  { key: 'PRICE_LEVEL_MODERATE', label: 'Up to $$', levels: ['PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE'] },
+  { key: 'PRICE_LEVEL_EXPENSIVE', label: 'Up to $$$', levels: ['PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE', 'PRICE_LEVEL_EXPENSIVE'] },
+];
+
+export const RSVPS: { key: Rsvp; label: string; short: string }[] = [
+  { key: 'going', label: "I'm going", short: 'Going' },
+  { key: 'maybe', label: 'Maybe', short: 'Maybe' },
+  { key: 'no', label: "Can't make it", short: "Can't make it" },
 ];

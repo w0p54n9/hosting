@@ -1,10 +1,12 @@
 import { db } from '@/lib/server/supabase';
 import {
-  arriveTimeOf, availabilityView, findParticipant, isOrganizer, loadEvent, meView, plannedDay, publicEvent, publicPeople, tzOf,
+  arriveTimeOf, availabilityView, findParticipant, isOrganizer, loadEvent, meView, needsSummary, plannedDay, progressView, publicEvent,
+  publicPeople, purgeIfPast, tzOf,
 } from '@/lib/server/data';
 import { getCore, planFor } from '@/lib/server/plan';
 import {
-  HttpError, cleanDate, cleanDay, cleanKind, cleanMode, cleanText, cleanTime, fail, handle, json, organizerToken, participantToken, readJson,
+  HttpError, cleanDate, cleanDay, cleanKind, cleanMode, cleanOptionalDay, cleanPriceCap, cleanText, cleanTime, fail, handle, json, organizerToken,
+  participantToken, readJson,
 } from '@/lib/server/http';
 import { timeIn, validTz, zonedToUtc } from '@/lib/dates';
 import type { EventBundle } from '@/lib/types';
@@ -20,14 +22,18 @@ export async function GET(req: Request, { params }: Ctx) {
     const { slug } = await params;
     const l = await loadEvent(slug);
     if (!l) return fail('This outing does not exist (or was deleted).', 404);
+    await purgeIfPast(l);
     const me = findParticipant(l, participantToken(req));
+    const plan = await planFor(l);
     const bundle: EventBundle = {
       event: publicEvent(l.event),
       people: publicPeople(l),
-      plan: await planFor(l),
+      plan,
       me: me ? meView(l, me) : null,
       isOrganizer: isOrganizer(l, organizerToken(req)),
       availability: availabilityView(l),
+      needs: needsSummary(l),
+      progress: progressView(l, plan),
     };
     return json(bundle);
   });
@@ -41,6 +47,10 @@ export async function GET(req: Request, { params }: Ctx) {
  *   lockDay: 'YYYY-MM-DD'   stop day-picking and fix the outing on that day
  *   openDays: true          let everyone mark the days they're free again
  *   officePlaceId           set the office address (from autocomplete); officePlaceId: null clears it
+ *   replyBy: 'YYYY-MM-DD' | null   the date everyone should reply by
+ *   maxPrice: PriceCap | null      budget cap for places
+ *   finalize: true          lock it all in: the best day (if people are still picking) and the top place
+ *   finalize: false         reopen the plan
  */
 export async function PATCH(req: Request, { params }: Ctx) {
   return handle(async () => {
@@ -104,10 +114,48 @@ export async function PATCH(req: Request, { params }: Ctx) {
       if (best) patch.starts_at = zonedToUtc(best, (patch.arrive_time as string) ?? arriveTimeOf(l.event), tz);
     }
 
+    // ----- budget and deadline -----
+    if ('replyBy' in body) patch.reply_by = cleanOptionalDay(body.replyBy);
+    if ('maxPrice' in body) patch.max_price = cleanPriceCap(body.maxPrice);
+
+    // ----- lock it all in -----
+    if (body.finalize === true) {
+      if (l.event.date_status === 'voting' && !('lockDay' in body)) {
+        const day = availabilityView(l).bestDay ?? plannedDay(l.event);
+        patch.starts_at = zonedToUtc(day, (patch.arrive_time as string) ?? arriveTimeOf(l.event), tz);
+        patch.date_status = 'set';
+      }
+      if (!('chosenPlaceId' in body) && !l.event.chosen_place_id) {
+        const plan = await planFor(l);
+        const top = plan.venues.find((v) => v.placeId === plan.selectedPlaceId);
+        if (!top) throw new HttpError(409, 'There’s no place to lock in yet. Wait until someone has joined.');
+        const { fanIds, voterIds, avgMin, maxMin, worstId, score, kmFromMidpoint, ...venue } = top;
+        void fanIds; void voterIds; void avgMin; void maxMin; void worstId; void score; void kmFromMidpoint;
+        patch.chosen_place_id = venue.placeId;
+        patch.chosen_place = venue;
+      }
+      patch.finalized_at = new Date().toISOString();
+    } else if (body.finalize === false) {
+      patch.finalized_at = null;
+    }
+
     if (Object.keys(patch).length) {
       const { error } = await db().from('events').update(patch).eq('id', l.event.id);
       if (error) throw error;
     }
+    return json({ ok: true });
+  });
+}
+
+/** Host only: delete the whole outing, everyone's details included. */
+export async function DELETE(req: Request, { params }: Ctx) {
+  return handle(async () => {
+    const { slug } = await params;
+    const l = await loadEvent(slug);
+    if (!l) return fail('Not found', 404);
+    if (!isOrganizer(l, organizerToken(req))) return fail('Only the host can delete this outing', 403);
+    const { error } = await db().from('events').delete().eq('id', l.event.id); // cascades to people, addresses, days
+    if (error) throw error;
     return json({ ok: true });
   });
 }

@@ -1,5 +1,5 @@
 import 'server-only';
-import type { LatLng, TravelMode, TripStep, Venue } from '../types';
+import type { LatLng, PlaceInfo, TravelMode, TripStep, Venue } from '../types';
 
 // Thin wrappers around Google Places API (New) and Routes API.
 // All calls use the server key, so addresses and coordinates never touch a browser key.
@@ -74,7 +74,22 @@ export async function placeLocation(placeId: string, sessionToken?: string): Pro
   return { address: r.formattedAddress ?? '', location: { lat: r.location.latitude, lng: r.location.longitude } };
 }
 
-export async function searchText(query: string, center: LatLng, radiusM: number, pageSize: number): Promise<Omit<Venue, 'category'>[]> {
+export interface SearchOptions {
+  /** Ask Google whether each place serves vegetarian food. */
+  veg?: boolean;
+  /** Ask Google whether each place has a wheelchair-accessible entrance. */
+  stepFree?: boolean;
+  /** Only these price levels (Google drops places with no price level when this is set). */
+  priceLevels?: string[];
+}
+
+export async function searchText(
+  query: string,
+  center: LatLng,
+  radiusM: number,
+  pageSize: number,
+  opts: SearchOptions = {},
+): Promise<Omit<Venue, 'category'>[]> {
   type Place = {
     id: string;
     displayName?: { text: string };
@@ -85,15 +100,22 @@ export async function searchText(query: string, center: LatLng, radiusM: number,
     priceLevel?: string;
     googleMapsUri?: string;
     businessStatus?: string;
+    servesVegetarianFood?: boolean;
+    accessibilityOptions?: { wheelchairAccessibleEntrance?: boolean };
   };
+  // The extra fields cost more, so only ask for them when someone needs them.
+  const extra = [opts.veg ? 'places.servesVegetarianFood' : '', opts.stepFree ? 'places.accessibilityOptions' : ''].filter(Boolean);
   const r = await call<{ places?: Place[] }>(`${PLACES}/places:searchText`, {
     body: {
       textQuery: query,
       pageSize,
       locationBias: { circle: { center: latLng(center), radius: Math.min(50000, Math.max(100, radiusM)) } },
+      ...(opts.priceLevels?.length ? { priceLevels: opts.priceLevels } : {}),
     },
-    fieldMask:
+    fieldMask: [
       'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.googleMapsUri,places.businessStatus',
+      ...extra,
+    ].join(','),
   });
   return (r.places ?? [])
     .filter((p) => p.location && (!p.businessStatus || p.businessStatus === 'OPERATIONAL'))
@@ -106,7 +128,40 @@ export async function searchText(query: string, center: LatLng, radiusM: number,
       ratingCount: p.userRatingCount,
       priceLevel: p.priceLevel,
       mapsUri: p.googleMapsUri,
+      ...(opts.veg && typeof p.servesVegetarianFood === 'boolean' ? { veg: p.servesVegetarianFood } : {}),
+      ...(opts.stepFree && typeof p.accessibilityOptions?.wheelchairAccessibleEntrance === 'boolean'
+        ? { stepFree: p.accessibilityOptions.wheelchairAccessibleEntrance }
+        : {}),
     }));
+}
+
+// Booking details for the chosen place: cached in memory, since they rarely change.
+const infoCache = new Map<string, { at: number; info: PlaceInfo }>();
+const INFO_TTL_MS = 12 * 60 * 60 * 1000;
+
+export async function placeInfo(placeId: string): Promise<PlaceInfo> {
+  const hit = infoCache.get(placeId);
+  if (hit && Date.now() - hit.at < INFO_TTL_MS) return hit.info;
+  type Resp = {
+    nationalPhoneNumber?: string;
+    internationalPhoneNumber?: string;
+    websiteUri?: string;
+    reservable?: boolean;
+    regularOpeningHours?: { weekdayDescriptions?: string[] };
+  };
+  const r = await call<Resp>(`${PLACES}/places/${encodeURIComponent(placeId)}`, {
+    method: 'GET',
+    fieldMask: 'nationalPhoneNumber,internationalPhoneNumber,websiteUri,reservable,regularOpeningHours.weekdayDescriptions',
+  });
+  const info: PlaceInfo = {
+    phone: r.nationalPhoneNumber || r.internationalPhoneNumber,
+    website: r.websiteUri,
+    reservable: r.reservable,
+    hours: r.regularOpeningHours?.weekdayDescriptions,
+  };
+  if (infoCache.size > 500) infoCache.clear();
+  infoCache.set(placeId, { at: Date.now(), info });
+  return info;
 }
 
 // ---------- Routes ----------

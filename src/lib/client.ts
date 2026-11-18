@@ -134,3 +134,128 @@ export function splitLocal(iso: string): { date: string; time: string } {
 }
 
 export const joinLocal = (date: string, time: string) => new Date(`${date}T${time || '19:00'}`).toISOString();
+
+// ---------- "Your outings" (this device only) ----------
+export interface SavedOuting {
+  slug: string;
+  title: string;
+  startsAt: string;
+  host: boolean;
+  seenAt: number;
+}
+const OUTINGS_KEY = 'going-out-outings';
+export function listOutings(): SavedOuting[] {
+  try {
+    const all = JSON.parse(localStorage.getItem(OUTINGS_KEY) || '[]') as SavedOuting[];
+    // Keep only outings this browser can still get back into.
+    return all.filter((o) => { const s = getStored(o.slug); return s.participantToken || s.organizerToken; });
+  } catch {
+    return [];
+  }
+}
+export function rememberOuting(o: Omit<SavedOuting, 'seenAt'>): void {
+  try {
+    const rest = listOutings().filter((x) => x.slug !== o.slug);
+    localStorage.setItem(OUTINGS_KEY, JSON.stringify([{ ...o, seenAt: Date.now() }, ...rest].slice(0, 30)));
+  } catch {
+    /* ignore */
+  }
+}
+export function forgetOuting(slug: string): void {
+  try {
+    localStorage.setItem(OUTINGS_KEY, JSON.stringify(listOutings().filter((x) => x.slug !== slug)));
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------- "Since your last visit" ----------
+export interface Snapshot {
+  people: Record<string, string>; // id -> name
+  startsAt: string;
+  dateStatus: string;
+  placeId: string | null;
+  placeName: string | null;
+  finalized: boolean;
+}
+const snapKey = (slug: string) => `going-out-seen:${slug}`;
+export function readSnapshot(slug: string): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(snapKey(slug));
+    return raw ? (JSON.parse(raw) as Snapshot) : null;
+  } catch {
+    return null;
+  }
+}
+export function writeSnapshot(slug: string, s: Snapshot): void {
+  try {
+    localStorage.setItem(snapKey(slug), JSON.stringify(s));
+  } catch {
+    /* ignore */
+  }
+}
+const names = (list: string[]) => (list.length <= 2 ? list.join(' and ') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`);
+export function describeChanges(before: Snapshot, now: Snapshot): string[] {
+  const out: string[] = [];
+  const joined = Object.keys(now.people).filter((id) => !before.people[id]).map((id) => now.people[id]);
+  const left = Object.keys(before.people).filter((id) => !now.people[id]).map((id) => before.people[id]);
+  if (now.finalized && !before.finalized) out.push('The plan is locked in');
+  if (joined.length) out.push(`${names(joined)} joined`);
+  if (left.length) out.push(`${names(left)} left`);
+  if (now.startsAt !== before.startsAt) out.push(`The day moved to ${fmtDay(now.startsAt)}, ${fmtTime(now.startsAt)}`);
+  else if (now.dateStatus !== before.dateStatus) out.push(now.dateStatus === 'set' ? 'The day is locked in' : 'Everyone is picking the day again');
+  if (now.placeId && now.placeId !== before.placeId && now.placeName) out.push(`The top place is now ${now.placeName}`);
+  return out;
+}
+
+// ---------- sharing ----------
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    window.prompt('Copy this:', text);
+    return false;
+  }
+}
+
+/** A calendar file (.ics) for the outing: works with Apple, Google and Outlook calendars. */
+export function downloadIcs(o: { slug: string; title: string; startsAt: string; place: string; address: string; url: string }) {
+  const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
+  const start = new Date(o.startsAt);
+  const end = new Date(start.getTime() + 2.5 * 3600_000);
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Going Out//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${o.slug}@going-out`,
+    `DTSTAMP:${stamp(new Date())}`,
+    `DTSTART:${stamp(start)}`,
+    `DTEND:${stamp(end)}`,
+    `SUMMARY:${esc(o.title)}`,
+    `LOCATION:${esc(`${o.place}, ${o.address}`)}`,
+    `DESCRIPTION:${esc(`Your directions and leave time: ${o.url}`)}`,
+    `URL:${o.url}`,
+    'BEGIN:VALARM',
+    'TRIGGER:-PT2H',
+    'ACTION:DISPLAY',
+    `DESCRIPTION:${esc(o.title)}`,
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+  a.download = `${o.title.replace(/[^\w\- ]+/g, '').trim() || 'outing'}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+export const fmtDayKeyLong = (day: string) =>
+  new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });

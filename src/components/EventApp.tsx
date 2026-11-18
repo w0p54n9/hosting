@@ -1,17 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import HostingMap from './HostingMap';
 import JoinForm from './JoinForm';
 import MyLinkSheet from './MyLinkSheet';
 import DayPicker from './DayPicker';
 import AddressInput, { type AddressValue } from './AddressInput';
 import { DirectionsPanel, PlacesPanel } from './Panels';
-import { absorbLinkTokens, api, fmtDay, fmtTime, joinLocal, splitLocal } from '@/lib/client';
-import { MODE_LABEL, ROLES, categoriesFor, iconFor } from '@/lib/categories';
-import { fmtTimeKey } from '@/lib/dates';
-import type { EventBundle, MyTrip, StartFrom } from '@/lib/types';
+import { ChangesBanner, FinalPlan, HostProgress, TodoList, arriveLabel } from './PlanCards';
+import {
+  absorbLinkTokens, api, describeChanges, forgetOuting, joinLocal, readSnapshot, rememberOuting, setStored, splitLocal, writeSnapshot,
+  type Snapshot,
+} from '@/lib/client';
+import { MODE_LABEL, NEEDS, PRICE_CAPS, ROLES, categoriesFor, iconFor } from '@/lib/categories';
+import type { EventBundle, MyTrip, Rsvp, StartFrom } from '@/lib/types';
 
 const POLL_MS = 20_000;
 const browserTz = () => {
@@ -41,6 +44,8 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
   const [linkSheet, setLinkSheet] = useState<null | 'joined' | 'view'>(null);
   const [editingOffice, setEditingOffice] = useState(false);
   const [officeDraft, setOfficeDraft] = useState<AddressValue>({ placeId: null, label: '' });
+  const [changes, setChanges] = useState<string[]>([]);
+  const snapChecked = useRef(false);
   const officeSession = useMemo(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random())), []);
 
   const load = useCallback(async () => {
@@ -74,11 +79,32 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
     if (data && !data.me && !dismissedJoin) setEditing(true);
   }, [data, dismissedJoin]);
 
+  // "Since your last visit": compare with what this device saw last time, then remember now.
+  useEffect(() => {
+    if (!data || (!data.me && !data.isOrganizer)) return;
+    const top = data.plan.venues.find((v) => v.placeId === data.plan.selectedPlaceId);
+    const now: Snapshot = {
+      people: Object.fromEntries(data.people.map((p) => [p.id, p.name])),
+      startsAt: data.event.startsAt,
+      dateStatus: data.event.dateStatus,
+      placeId: top?.placeId ?? null,
+      placeName: top?.name ?? null,
+      finalized: data.event.finalized,
+    };
+    if (!snapChecked.current) {
+      snapChecked.current = true;
+      const before = readSnapshot(slug);
+      if (before) setChanges(describeChanges(before, now));
+    }
+    writeSnapshot(slug, now);
+    rememberOuting({ slug, title: data.event.title, startsAt: data.event.startsAt, host: data.isOrganizer });
+  }, [data, slug]);
+
   // Re-fetch my directions only when something that affects them changes.
   const me = data?.me ?? null;
   const pool = data?.plan.carpools.find((c) => c.driverId === me?.id || c.riderIds.includes(me?.id ?? ''));
-  const tripKey = data && me && me.location
-    ? JSON.stringify([data.plan.selectedPlaceId, data.event.startsAt, me.role, me.seats, me.location, me.startFrom, data.event.office, pool])
+  const tripKey = data && me && me.location && me.rsvp !== 'no'
+    ? JSON.stringify([data.plan.selectedPlaceId, data.event.startsAt, me.role, me.seats, me.location, me.startFrom, me.altStartAddress, data.event.office, pool])
     : null;
   useEffect(() => {
     if (!tripKey) {
@@ -115,14 +141,57 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
     }
   }
 
-  async function setStartFrom(startFrom: StartFrom) {
-    if (!me || me.startFrom === startFrom) return;
+  async function patchMe(patch: Record<string, unknown>) {
     try {
-      await api(`/api/events/${slug}/participants/me`, slug, { method: 'PATCH', json: { startFrom } });
+      await api(`/api/events/${slug}/participants/me`, slug, { method: 'PATCH', json: patch });
       await load();
     } catch (err) {
       alert((err as Error).message);
     }
+  }
+
+  async function setStartFrom(startFrom: StartFrom) {
+    if (!me || me.startFrom === startFrom) return;
+    if (startFrom === 'other' && !me.altStartAddress) return setEditing(true); // ask for the address first
+    await patchMe({ startFrom });
+  }
+
+  const setRsvp = (rsvp: Rsvp) => me && me.rsvp !== rsvp && patchMe({ rsvp });
+
+  async function removePerson(id: string, name: string) {
+    if (!window.confirm(`Remove ${name} from this outing? Their address and free days are deleted.`)) return;
+    try {
+      await api(`/api/events/${slug}/participants/${id}`, slug, { method: 'DELETE' });
+      await load();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
+
+  async function deleteOuting() {
+    if (!window.confirm('Delete this outing for everyone? Everyone’s details are erased. This can’t be undone.')) return;
+    try {
+      await api(`/api/events/${slug}`, slug, { method: 'DELETE' });
+      forgetOuting(slug);
+      setStored(slug, { participantToken: undefined, organizerToken: undefined });
+      window.location.href = '/';
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
+
+  async function lockItIn() {
+    const msg = data?.event.dateStatus === 'voting'
+      ? 'Lock it all in? This fixes the day most people can make and the top place, and closes voting. You can reopen it later.'
+      : 'Lock it all in? This fixes the top place and closes voting. You can reopen it later.';
+    if (window.confirm(msg)) await patchEvent({ finalize: true });
+  }
+
+  function go(where: 'days' | 'vote' | 'route') {
+    if (where === 'days') return document.getElementById('days')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTab(where === 'vote' ? 'places' : 'route');
+    setCollapsed(false);
+    setTimeout(() => document.getElementById('panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
   async function saveOffice(clear = false) {
@@ -167,15 +236,23 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
 
   const { event, people, plan, isOrganizer } = data;
   const tags = new Set(categoriesFor(event.kind).map((c) => c.key));
-  const sorted = [...people].sort((a, b) => Number(b.id === me?.id) - Number(a.id === me?.id));
+  const RANK: Record<Rsvp, number> = { going: 0, maybe: 1, no: 2 };
+  const sorted = [...people].sort((a, b) => Number(b.id === me?.id) - Number(a.id === me?.id) || RANK[a.rsvp] - RANK[b.rsvp]);
   const local = splitLocal(event.startsAt);
   const picking = event.dateStatus === 'voting';
 
   return (
     <div className="app">
       <aside className="side">
-        <Wordmark />
+        <div className="sidetop">
+          <Wordmark />
+          <ChangesBanner changes={changes} onDismiss={() => setChanges([])} />
+          {event.finalized && <FinalPlan data={data} onHost={patchEvent} />}
+          <TodoList data={data} onJoin={() => setEditing(true)} onRsvp={setRsvp} onGo={go} />
+        </div>
 
+        <div className="siderest">
+        {isOrganizer && <HostProgress data={data} onHost={patchEvent} />}
         <div className="card">
           {isOrganizer ? (
             <>
@@ -230,14 +307,23 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
               ) : (
                 <button className="linkbtn" style={{ marginTop: 0 }} onClick={() => setEditingOffice(true)}>🏢 Add an office address so people can head over from work</button>
               )}
+              <span className="lbl">Budget</span>
+              <select value={event.maxPrice ?? ''} onChange={(e) => patchEvent({ maxPrice: e.target.value || null })}>
+                <option value="">Any price</option>
+                {PRICE_CAPS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              </select>
+              {!event.finalized && (
+                <button className="btn block lock" onClick={lockItIn} disabled={!plan.selectedPlaceId}>🔒 LOCK IT ALL IN</button>
+              )}
             </>
           ) : (
             <>
               <div className="title">{event.title}</div>
+              <div className="meta">📅 {arriveLabel(data)}</div>
               <div className="meta">
-                {picking ? `📅 Day: being picked · arrive by ${fmtTimeKey(event.arriveTime)}` : `📅 ${fmtDay(event.startsAt)} · arrive by ${fmtTime(event.startsAt)}`}
+                {event.kind === 'food' ? '🍽️ Food' : '🎳 Activity'} · {event.midpointMode === 'fair' ? 'fairest meeting spot' : 'least total travel'}
+                {event.maxPrice ? ` · ${PRICE_CAPS.find((c) => c.key === event.maxPrice)?.label}` : ''}
               </div>
-              <div className="meta">{event.kind === 'food' ? '🍽️ Food' : '🎳 Activity'} · {event.midpointMode === 'fair' ? 'fairest meeting spot' : 'least total travel'}</div>
               {event.office && <div className="meta">🏢 Office: {event.office.address}</div>}
             </>
           )}
@@ -249,12 +335,13 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
             <input readOnly value={typeof window !== 'undefined' ? `${window.location.origin}/e/${slug}` : `/e/${slug}`} onFocus={(e) => e.target.select()} />
             <button className="btn small" onClick={copyInvite}>{copied ? 'Copied' : 'Copy'}</button>
           </div>
+          {isOrganizer && <button className="linkbtn dangerlink" onClick={deleteOuting}>Delete this outing</button>}
         </div>
 
-        {picking && <DayPicker slug={slug} data={data} onChanged={load} onJoin={() => setEditing(true)} onHost={patchEvent} />}
+        {picking && <div id="days"><DayPicker slug={slug} data={data} onChanged={load} onJoin={() => setEditing(true)} onHost={patchEvent} /></div>}
 
         <h3>
-          <span>Who&apos;s going · {people.length}</span>
+          <span>Who&apos;s going · {data.progress.going}{data.progress.maybe ? ` + ${data.progress.maybe} maybe` : ''}</span>
           {!me && <button className="btn small" onClick={() => setEditing(true)}>+ Join</button>}
         </h3>
         {sorted.map((p) => {
@@ -263,24 +350,30 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
           const likes = p.likes.filter((t) => tags.has(t));
           const driverName = est?.driverId ? people.find((x) => x.id === est.driverId)?.name : null;
           return (
-            <div key={p.id} className={`person ${mine ? 'me' : ''}`}>
+            <div key={p.id} className={`person ${mine ? 'me' : ''} ${p.rsvp === 'no' ? 'out' : ''}`}>
               <div className="av" style={{ background: p.color }}>{p.name[0]}</div>
               <div>
                 <div className="pname">
                   {p.name} {mine && <span className="you">YOU</span>}
-                  <span className="role">
-                    {ROLES[p.role].icon} {ROLES[p.role].label}
-                    {p.role === 'driver' && p.seats ? ` · ${p.seats} seat${p.seats > 1 ? 's' : ''}` : ''}
-                    {p.startFrom === 'office' ? ' · 🏢 from the office' : event.office ? ' · 🏠 from home' : ''}
-                  </span>
+                  {p.rsvp === 'maybe' && <span className="rtag">MAYBE</span>}
+                  {p.rsvp === 'no' && <span className="rtag no">CAN&apos;T MAKE IT</span>}
+                  {p.rsvp !== 'no' && (
+                    <span className="role">
+                      {ROLES[p.role].icon} {ROLES[p.role].label}
+                      {p.role === 'driver' && p.seats ? ` · ${p.seats} seat${p.seats > 1 ? 's' : ''}` : ''}
+                      {p.startFrom === 'office' ? ' · 🏢 from the office' : p.startFrom === 'other' ? ' · 📍 from elsewhere' : event.office ? ' · 🏠 from home' : ''}
+                    </span>
+                  )}
                 </div>
                 {mine ? (
                   <>
-                    <div className="addr mine">📍 {me!.address ?? 'No address yet'}</div>
-                    {event.office && (
+                    <div className="addr mine">🏠 {me!.address ?? 'No address yet'}</div>
+                    {me!.startFrom === 'other' && me!.altStartAddress && <div className="addr mine">📍 Starting from {me!.altStartAddress}</div>}
+                    {me!.rsvp !== 'no' && (
                       <div className="seg mini" role="group" aria-label="Setting off from">
-                        <button className={me!.startFrom === 'home' ? 'on' : ''} onClick={() => setStartFrom('home')}>🏠 From home</button>
-                        <button className={me!.startFrom === 'office' ? 'on' : ''} onClick={() => setStartFrom('office')}>🏢 From the office</button>
+                        <button className={me!.startFrom === 'home' ? 'on' : ''} onClick={() => setStartFrom('home')}>🏠 Home</button>
+                        {event.office && <button className={me!.startFrom === 'office' ? 'on' : ''} onClick={() => setStartFrom('office')}>🏢 Office</button>}
+                        <button className={me!.startFrom === 'other' ? 'on' : ''} onClick={() => setStartFrom('other')}>📍 Elsewhere</button>
                       </div>
                     )}
                     <label className="switch">
@@ -290,7 +383,10 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                     </label>
                   </>
                 ) : (
-                  <div className={`addr ${p.address ? 'shown' : ''}`}>{p.address ? `📍 ${p.address}` : '🔒 Address private'}</div>
+                  <div className={`addr ${p.address ? 'shown' : ''}`}>
+                    {p.address ? `📍 ${p.address}` : '🔒 Address private'}
+                    {isOrganizer && <button className="linkbtn dangerlink inline" onClick={() => removePerson(p.id, p.name)}>Remove</button>}
+                  </div>
                 )}
                 <div className="chips">
                   {likes.length ? likes.map((t) => <span key={t} className="chip">{iconFor(t)} {t}</span>) : <span className="chip" style={{ opacity: 0.6 }}>Open to anything</span>}
@@ -312,6 +408,12 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
           );
         })}
         {!people.length && <div className="empty" style={{ padding: 20 }}>No one yet. Share the invite link!</div>}
+        {data.needs && Object.keys(data.needs).length > 0 && (
+          <div className="pool" style={{ color: 'var(--muted)' }}>
+            Group needs (counts only):{' '}
+            {NEEDS.filter((n) => data.needs[n.key]).map((n) => `${data.needs[n.key]} ${n.label.toLowerCase()}`).join(' · ')}
+          </div>
+        )}
 
         <h3>Rides</h3>
         {plan.carpools.filter((c) => c.riderIds.length || c.openSeats).map((c) => {
@@ -333,6 +435,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
         {!plan.carpools.some((c) => c.riderIds.length || c.openSeats) && !plan.unmatchedRiderIds.length && (
           <div className="pool" style={{ color: 'var(--muted)' }}>No drivers offering seats yet.</div>
         )}
+        </div>
       </aside>
 
       <main className={`mapwrap ${collapsed ? 'collapsed' : ''}`}>
@@ -363,7 +466,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
           )}
         </div>
         <button className="showpanel" onClick={() => setCollapsed(false)}>☰ PLACES &amp; DIRECTIONS</button>
-        <aside className="panel">
+        <aside className="panel" id="panel">
           <div className="tabs">
             <button className={tab === 'places' ? 'on' : ''} onClick={() => setTab('places')}>Places</button>
             <button className={tab === 'route' ? 'on' : ''} onClick={() => setTab('route')}>Your route</button>
@@ -376,6 +479,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                 focusId={focusId}
                 onFocus={setFocusId}
                 onChoose={(id) => patchEvent({ chosenPlaceId: id })}
+                onUnchoose={() => patchEvent({ chosenPlaceId: null })}
                 onVote={votePlace}
                 onJoin={() => setEditing(true)}
               />
@@ -390,7 +494,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
         <JoinForm
           slug={slug}
           me={me}
-          office={event.office}
+          event={event}
           onClose={() => {
             setEditing(false);
             setDismissedJoin(true);

@@ -2,11 +2,12 @@ import 'server-only';
 import { computeRoute, mapsLink, type RouteResult } from './google';
 import { estMinutes, timingFor } from './geo';
 import { matchCarpools } from './plan';
-import { originLabel, originOf, startsAtOffice, type Loaded, type ParticipantRow } from './data';
+import { originLabel, originOf, rsvpOf, startFromOf, startsAtOffice, type Loaded, type ParticipantRow } from './data';
 import type { LatLng, MyTrip, Plan, TravelMode, TripStep } from '../types';
 
 const PICKUP_MIN = 2; // time spent at each pickup
 const PARK_MIN = 3;   // time to park at the venue
+const PICKUP_WHERE = { home: 'at home', office: 'at the office', other: 'at your starting point' } as const;
 
 async function safeRoute(o: LatLng, d: LatLng, via: LatLng[], mode: TravelMode, timing: ReturnType<typeof timingFor>): Promise<RouteResult | null> {
   try {
@@ -21,7 +22,7 @@ async function safeRoute(o: LatLng, d: LatLng, via: LatLng[], mode: TravelMode, 
 export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Promise<MyTrip | null> {
   const venue = plan.venues.find((v) => v.placeId === plan.selectedPlaceId);
   const origin = originOf(l, me);
-  if (!venue || !origin) return null;
+  if (!venue || !origin || rsvpOf(me) === 'no') return null;
 
   // 'home' below means "where I'm setting off from": my home, or the office.
   const home = origin;
@@ -52,7 +53,8 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
       t += legMins[i] * 60_000;
       const at = t;
       t += PICKUP_MIN * 60_000;
-      return { name: r.name, address: originLabel(l, r), at: iso(at), location: locOf(r.id) };
+      // A rider's phone number only ever goes to their own driver.
+      return { name: r.name, address: originLabel(l, r), at: iso(at), location: locOf(r.id), ...(r.phone ? { phone: r.phone } : {}) };
     });
 
     const steps: TripStep[] = [];
@@ -112,11 +114,12 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
       arriveAt: iso(start),
       polyline: myRoute?.polyline ?? null,
       steps: [
-        { icon: '🙋', text: `${driver.name} picks you up ${fromOffice ? 'at the office' : 'at home'}`, highlight: true },
+        { icon: '🙋', text: `${driver.name} picks you up ${PICKUP_WHERE[startFromOf(l, me)]}`, highlight: true },
         { icon: '🚗', text: 'Ride together', detail: `about ${minutes} min` },
         arrive,
       ],
       driverName: driver.name,
+      ...(driver.phone ? { driverPhone: driver.phone } : {}),
       estimated: !driverRoute,
       mapsUrl: mapsLink(home, venue, 'drive'),
       home,
