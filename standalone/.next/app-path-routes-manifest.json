@@ -2,10 +2,11 @@
   "/_not-found/page": "/_not-found",
   "/api/events/[slug]/participants/route": "/api/events/[slug]/participants",
   "/api/events/[slug]/participants/me/route": "/api/events/[slug]/participants/me",
-  "/api/events/route": "/api/events",
-  "/api/places/autocomplete/route": "/api/places/autocomplete",
   "/api/events/[slug]/trip/route": "/api/events/[slug]/trip",
   "/api/events/[slug]/route": "/api/events/[slug]",
+  "/api/events/[slug]/votes/route": "/api/events/[slug]/votes",
+  "/api/places/autocomplete/route": "/api/places/autocomplete",
+  "/api/events/route": "/api/events",
   "/page": "/",
   "/e/[slug]/page": "/e/[slug]"
 }

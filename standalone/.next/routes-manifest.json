@@ -52,6 +52,14 @@
       "namedRegex": "^/api/events/(?<nxtPslug>[^/]+?)/trip(?:/)?$"
     },
     {
+      "page": "/api/events/[slug]/votes",
+      "regex": "^/api/events/([^/]+?)/votes(?:/)?$",
+      "routeKeys": {
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/api/events/(?<nxtPslug>[^/]+?)/votes(?:/)?$"
+    },
+    {
       "page": "/e/[slug]",
       "regex": "^/e/([^/]+?)(?:/)?$",
       "routeKeys": {
