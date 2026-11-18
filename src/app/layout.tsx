@@ -6,6 +6,10 @@ import './globals.css';
 // Archivo's width axis at 125% + weight 900 gives the extra-wide, ultra-black display look.
 const archivo = Archivo({ subsets: ['latin'], axes: ['wdth'], variable: '--font-archivo', display: 'swap' });
 
+// Render every page per request. Pre-built (static) pages get cached by the host and outlive deploys,
+// which once left an old home page showing after an update.
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'GOING OUT: plan the night, not the logistics',
   description: 'Pick the day, find the fair middle, rank places everyone likes, sort out rides. Going Out does the planning.',
