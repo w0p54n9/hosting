@@ -25,22 +25,19 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
   const [seats, setSeats] = useState(me?.seats ?? 0);
   const [likes, setLikes] = useState<string[]>(me?.likes ?? []);
   const [address, setAddress] = useState<{ placeId: string | null; label: string }>({ placeId: null, label: me?.address ?? '' });
-  const [share, setShare] = useState(me ? me.shareLocation : true);
-  const [forget, setForget] = useState(false);
+  const [showAddress, setShowAddress] = useState(me?.showAddress ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // One Places "session" per form, which keeps autocomplete billing low.
+  // One Places "session" per form, which keeps address-lookup billing low.
   const sessionToken = useMemo(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random())), []);
-
   const toggle = (k: string) => setLikes((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
 
   async function save(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (!name.trim()) return setError('Add your name');
-    const hasSaved = !!me?.address && !forget;
-    if (share && !address.placeId && !hasSaved) return setError('Pick your address from the suggestions, or turn off "Use my address"');
+    if (!address.placeId && !me?.address) return setError('Pick your address from the suggestions');
     setBusy(true);
     try {
       const body = {
@@ -48,9 +45,8 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
         role,
         seats: role === 'driver' ? seats : 0,
         likes,
-        shareLocation: share,
-        ...(share && address.placeId ? { placeId: address.placeId, sessionToken } : {}),
-        ...(!share && forget ? { forgetAddress: true } : {}),
+        showAddress,
+        ...(address.placeId ? { placeId: address.placeId, sessionToken } : {}),
       };
       if (isNew) {
         const r = await api<{ token: string }>(`/api/events/${slug}/participants`, slug, { method: 'POST', json: body });
@@ -66,7 +62,7 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
   }
 
   async function leave() {
-    if (!window.confirm('Leave this outing? Your address will be deleted.')) return;
+    if (!window.confirm('Leave this outing? Your address and free days will be deleted.')) return;
     setBusy(true);
     try {
       await api(`/api/events/${slug}/participants/me`, slug, { method: 'DELETE' });
@@ -81,34 +77,27 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
   return (
     <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="sheet" onSubmit={save}>
-        <h2>{isNew ? 'Join the outing' : 'Your details'}</h2>
-        <p className="lead">{isNew ? 'Takes 30 seconds. Your address stays private, and adding it is up to you.' : 'Changes update the plan for everyone.'}</p>
+        <h2>{isNew ? "I'm in" : 'Your details'}</h2>
+        <p className="lead">{isNew ? 'Takes 30 seconds. Then mark the days you’re free.' : 'Changes update the plan for everyone.'}</p>
 
         <div className="field">
           <span className="lbl">Name</span>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="First name" maxLength={40} autoFocus={isNew} />
         </div>
 
-        <div className="field">
+        <AddressInput value={address} onChange={setAddress} sessionToken={sessionToken} />
+        <div className="field" style={{ marginTop: -6 }}>
           <label className="switch big">
-            <input type="checkbox" checked={share} onChange={(e) => { setShare(e.target.checked); setForget(false); }} />
+            <input type="checkbox" checked={showAddress} onChange={(e) => setShowAddress(e.target.checked)} />
             <span className="track" />
-            Use my address to find the meeting spot
+            Show my address to the group
           </label>
-          {!share && (
-            <div className="hint">
-              You&apos;ll still count for the food and activity picks, but not for the meeting spot, carpools or directions.
-              You can turn this on any time.
-              {me?.address && (
-                <label className="forget">
-                  <input type="checkbox" checked={forget} onChange={(e) => setForget(e.target.checked)} /> Also delete my saved address
-                </label>
-              )}
-            </div>
-          )}
+          <div className="hint">
+            {showAddress
+              ? 'Everyone in this outing will see your address and your home on their map. Handy for sorting out rides.'
+              : 'Off: only you can see it, plus your driver if you ask for a ride. It’s still used to find the meeting spot.'}
+          </div>
         </div>
-
-        {share && <AddressInput value={address} onChange={setAddress} sessionToken={sessionToken} />}
 
         <div className="field">
           <span className="lbl">How are you getting there?</span>
@@ -129,9 +118,7 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
               </div>
             </>
           )}
-          {role === 'rider' && share && <div className="hint">You&apos;ll be matched with a driver. Only that driver sees your address.</div>}
-          {role === 'rider' && !share && <div className="hint" style={{ color: 'var(--warn)' }}>Drivers need a pickup spot, so turn on &ldquo;Use my address&rdquo; to get matched with a ride.</div>}
-          {role === 'driver' && !share && <div className="hint" style={{ color: 'var(--warn)' }}>Without your address, Hosting can&apos;t plan pickups along your route, so riders won&apos;t be matched with you.</div>}
+          {role === 'rider' && <div className="hint">You&apos;ll be matched with a driver, who gets your address for the pickup.</div>}
         </div>
 
         <div className="field">
@@ -200,7 +187,7 @@ function AddressInput({
 
   return (
     <div className="field">
-      <span className="lbl">Home address 🔒</span>
+      <span className="lbl">Home address</span>
       <input
         type="text"
         value={q}
@@ -233,9 +220,6 @@ function AddressInput({
           ))}
         </div>
       )}
-      <div className="hint">
-        Only you see this, plus your driver if you ask for a ride. It&apos;s used on the server to find the fair midpoint and is never shown to the group.
-      </div>
     </div>
   );
 }

@@ -12,8 +12,7 @@ export interface LatLng {
   lng: number;
 }
 
-export type DateStatus = 'set' | 'voting';
-export type Vote = 'yes' | 'maybe' | 'no';
+export type DateStatus = 'set' | 'voting'; // 'voting' = everyone marks the days they're free
 
 export interface PublicEvent {
   slug: string;
@@ -23,14 +22,15 @@ export interface PublicEvent {
   midpointMode: MidpointMode;
   chosenPlaceId: string | null;
   dateStatus: DateStatus;
+  arriveTime: string; // 'HH:MM' in the outing's time zone
+  timezone: string; // IANA, e.g. America/Toronto
 }
 
-export interface DateOption {
-  id: string;
-  startsAt: string;
-  yes: string[]; // participant ids
-  maybe: string[];
-  no: string[];
+/** Who is free on which day ('YYYY-MM-DD' -> participant ids). */
+export interface Availability {
+  byDay: Record<string, string[]>;
+  bestDay: string | null;
+  today: string;
 }
 
 export interface PublicPerson {
@@ -40,7 +40,10 @@ export interface PublicPerson {
   seats: number;
   likes: string[];
   color: string;
-  hasLocation: boolean; // has an address AND has the "use my address" switch on
+  hasLocation: boolean;
+  /** Only present when this person switched on "Show my address to the group". */
+  address?: string;
+  home?: LatLng;
 }
 
 export interface Venue {
@@ -94,7 +97,7 @@ export interface Me {
   role: Role;
   seats: number;
   likes: string[];
-  shareLocation: boolean;
+  showAddress: boolean;
   address: string | null;
   location: LatLng | null;
 }
@@ -105,7 +108,7 @@ export interface EventBundle {
   plan: Plan;
   me: Me | null;
   isOrganizer: boolean;
-  dateOptions: DateOption[];
+  availability: Availability;
 }
 
 export interface TripStep {

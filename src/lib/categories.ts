@@ -58,7 +58,8 @@ export const MODE_LABEL: Record<TravelMode, { label: string; icon: string }> = {
 export const travelModeOf = (role: Role): TravelMode =>
   role === 'driver' || role === 'rider' ? 'drive' : role;
 
+// Bright enough to read black initials on, and to stand out on the dark map.
 export const PERSON_COLORS = [
-  '#e2583e', '#2f7dd1', '#8a5cd1', '#1f9e89', '#d9921a', '#c2417f',
-  '#55702e', '#5a6b85', '#b5552d', '#2b8a9e', '#7a4fb0', '#c97a00',
+  '#ff6b4a', '#4da3ff', '#c08bff', '#36e3b4', '#ffc23d', '#ff5fae',
+  '#a6e85a', '#8fb2ff', '#ff9a5c', '#4fdcf0', '#e0a3ff', '#ffe36b',
 ];

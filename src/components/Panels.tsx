@@ -93,14 +93,12 @@ export function DirectionsPanel({
   loading,
   error,
   onJoin,
-  onUseAddress,
 }: {
   data: EventBundle;
   trip: MyTrip | null;
   loading: boolean;
   error: string | null;
   onJoin: () => void;
-  onUseAddress: () => void;
 }) {
   if (!data.me) {
     return (
@@ -110,14 +108,11 @@ export function DirectionsPanel({
       </div>
     );
   }
-  if (!data.me.shareLocation || !data.me.location) {
+  if (!data.me.location) {
     return (
       <div className="empty">
-        <p>
-          &ldquo;Use my address&rdquo; is off, so you&apos;re not part of the meeting-spot maths and there&apos;s no route to plan.
-          Turn it on any time to get directions, a leave-by time and a carpool.
-        </p>
-        <button className="btn" onClick={onUseAddress}>{data.me.address ? 'Use my address' : 'Add my address'}</button>
+        <p>Add your address to get directions and a leave-by time.</p>
+        <button className="btn" onClick={onJoin}>Add my address</button>
       </div>
     );
   }
@@ -134,9 +129,9 @@ export function DirectionsPanel({
         <p>Arrive by {fmtTime(trip.arriveAt)}, {fmtDay(trip.arriveAt)}</p>
       </div>
 
-      {data.event.dateStatus === 'voting' && data.dateOptions.length > 0 && (
+      {data.event.dateStatus === 'voting' && (
         <div className="note" style={{ marginTop: 12 }}>
-          🗳️ The date is still being voted on. These times assume {fmtDay(trip.arriveAt)}, and they&apos;ll update when the host locks in a date.
+          📅 The day isn&apos;t locked in yet. These times are for {fmtDay(trip.arriveAt)}, the day most people are free so far.
         </div>
       )}
 

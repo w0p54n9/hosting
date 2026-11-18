@@ -30,6 +30,7 @@ export default function HostingMap(props: Props) {
         gestureHandling="greedy"
         disableDefaultUI
         zoomControl
+        colorScheme="DARK"
         clickableIcons={false}
         style={{ width: '100%', height: '100%' }}
       >
@@ -43,19 +44,21 @@ function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: P
   const map = useMap();
   const top = plan.venues.slice(0, 8);
   const selected = plan.venues.find((v) => v.placeId === plan.selectedPlaceId) ?? null;
-  const myColor = people.find((p) => p.id === me?.id)?.color ?? '#1f2430';
-  const home = me && me.shareLocation ? me.location : null; // your pin only while "Use my address" is on
+  const myColor = people.find((p) => p.id === me?.id)?.color ?? '#d7ff3a';
+  const home = me?.location ?? null;
+  // Other people's homes, only for those who chose "Show my address to the group".
+  const shownHomes = people.filter((p) => p.home && p.id !== me?.id);
 
   // Your route only. Nobody else's route is ever drawn, because it would reveal their home.
   useEffect(() => {
     if (!map || !trip?.polyline) return;
     const path = decodePolyline(trip.polyline);
     const dashed = trip.mode === 'walk' || trip.mode === 'transit';
-    const casing = new google.maps.Polyline({ path, map, strokeColor: '#ffffff', strokeOpacity: 1, strokeWeight: 9, zIndex: 1 });
+    const casing = new google.maps.Polyline({ path, map, strokeColor: '#000000', strokeOpacity: 1, strokeWeight: 9, zIndex: 1 });
     const line = new google.maps.Polyline({
       path,
       map,
-      strokeColor: myColor,
+      strokeColor: '#d7ff3a', // your route in the accent colour
       strokeOpacity: dashed ? 0 : 1,
       strokeWeight: 5,
       zIndex: 2,
@@ -124,9 +127,14 @@ function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: P
           <div className="m-home" style={{ background: myColor }}>⌂</div>
         </AdvancedMarker>
       )}
+      {shownHomes.map((p) => (
+        <AdvancedMarker key={'h' + p.id} position={p.home!} title={`${p.name}'s home (shown by ${p.name})`} zIndex={15}>
+          <div className="m-other" style={{ background: p.color }}>{p.name[0]}</div>
+        </AdvancedMarker>
+      ))}
       {trip?.pickups?.map((p) => (
         <AdvancedMarker key={p.name + p.at} position={p.location} title={`Pick up ${p.name}`} zIndex={25}>
-          <div className="m-pick" style={{ background: people.find((x) => x.name === p.name)?.color ?? '#2f8a5b' }}>
+          <div className="m-pick" style={{ background: people.find((x) => x.name === p.name)?.color ?? '#3ddc84' }}>
             {p.name[0]}
           </div>
         </AdvancedMarker>

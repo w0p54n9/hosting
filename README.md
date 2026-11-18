@@ -1,8 +1,10 @@
-# Hosting
+# GOING OUT
 
-Plan the outing, not the logistics. Hosting helps a group (coworkers, friends) get an outing going:
+Plan the night, not the logistics. Going Out helps a group (coworkers, friends) get an outing going:
 
-- **Everyone adds their address privately.** Nobody else in the group ever sees it.
+- **Everyone picks the days they're free** on a calendar. The day most people can make is used automatically, and the host can lock it in.
+
+- **Everyone adds their address.** It's private by default. Each person can switch on *Show my address to the group*, and then others see it and their home appears on everyone's map.
 - **A fair midpoint.** Either the spot with the *shortest longest trip* (fairest) or the *least total travel*.
 - **Ranked places** from Google Maps near that midpoint, scored by how many people are into each category and how far each person has to travel (real travel times by each person's own mode).
 - **Carpools.** Drivers offer seats, riders get matched to the driver with the smallest detour. A rider's address goes only to their driver.
@@ -21,7 +23,7 @@ poll /api/events/:slug  ◄──────── midpoint + ranked places + c
 "Your directions" ──────────────► /api/events/:slug/trip ──────────────► Routes API (your route only)
 ```
 
-**Privacy model.** The browser never receives anyone else's address or coordinates. Each person's address is resolved and stored server-side in `participant_locations`. Supabase row-level security is on with no policies, so only the server (service role key) can read it. Public responses contain names, roles, likes and travel minutes. The only exception is a driver's own directions, which include their riders' pickup addresses. The map shows only *your* home and *your* route.
+**Privacy model.** The browser never receives anyone else's address or coordinates, unless that person switched on *Show my address to the group*. Each person's address is resolved and stored server-side in `participant_locations`. Supabase row-level security is on with no policies, so only the server (service role key) can read it. Public responses contain names, roles, likes and travel minutes. The only exception is a driver's own directions, which include their riders' pickup addresses. The map shows only *your* home and *your* route.
 
 Two things are worth knowing:
 - Travel minutes plus the midpoint could, in principle, let a determined person roughly guess where someone lives. If that matters for your group, round the minutes shown in `PeopleList` (EventApp) or hide other people's minutes.
@@ -31,7 +33,7 @@ Two things are worth knowing:
 
 ### 1. Supabase
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql).
+2. Open **SQL Editor** and run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), then [`0002_availability_and_show_address.sql`](supabase/migrations/0002_availability_and_show_address.sql).
 3. From **Project Settings → API** copy the project URL and the **service_role** key.
 
 ### 2. Google Maps Platform
@@ -101,7 +103,6 @@ For each candidate place:
 where `travel` is the longest trip in *fairest* mode and the average trip in *least total* mode. In plain terms, a place everyone loves is worth about 45 extra minutes of travel. Tweak it in `derivePlan`.
 
 ## Ideas for next
-- Date polls ("which evening works?") before the place is chosen.
 - Sign-in (Supabase Auth magic links) so people can use Hosting across devices.
 - Notifications when the pick changes or your pickup time moves.
 - Dietary needs as hard filters (e.g. vegetarian options required).

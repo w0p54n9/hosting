@@ -1,7 +1,8 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { ALL_KEYS } from '../categories';
-import type { EventKind, MidpointMode, Role, Vote } from '../types';
+import type { EventKind, MidpointMode, Role } from '../types';
+import { addDays, isDay, isTime } from '../dates';
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
 export const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
@@ -71,14 +72,19 @@ export function cleanDate(v: unknown): string {
   return d.toISOString();
 }
 
-export function cleanVote(v: unknown): Vote | null {
-  if (v === null) return null;
-  if (v === 'yes' || v === 'maybe' || v === 'no') return v;
-  throw new HttpError(400, 'Vote must be yes, maybe or no');
+export function cleanDay(v: unknown): string {
+  if (!isDay(v)) throw new HttpError(400, 'Pick a valid day');
+  return v;
 }
 
-/** 2 to 8 distinct future-or-present date options, sorted. */
-export function cleanDateOptions(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return [...new Set(v.map(cleanDate))].sort().slice(0, 8);
+export function cleanTime(v: unknown): string {
+  if (!isTime(v)) throw new HttpError(400, 'Pick a valid time');
+  return v;
+}
+
+/** Up to 120 distinct days, from today (in the outing's time zone) to about 6 months out. */
+export function cleanDays(v: unknown, today: string): string[] {
+  if (!Array.isArray(v)) throw new HttpError(400, 'Days must be a list');
+  const last = addDays(today, 186);
+  return [...new Set(v.filter(isDay))].filter((d) => d >= today && d <= last).sort().slice(0, 120);
 }

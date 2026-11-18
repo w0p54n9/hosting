@@ -1,16 +1,19 @@
 import { db } from '@/lib/server/supabase';
-import { findParticipant, isOrganizer, loadEvent, meView, publicDateOptions, publicEvent, publicPeople } from '@/lib/server/data';
+import {
+  arriveTimeOf, availabilityView, findParticipant, isOrganizer, loadEvent, meView, plannedDay, publicEvent, publicPeople, tzOf,
+} from '@/lib/server/data';
 import { getCore, planFor } from '@/lib/server/plan';
 import {
-  HttpError, cleanDate, cleanKind, cleanMode, cleanText, fail, handle, json, organizerToken, participantToken, readJson,
+  HttpError, cleanDate, cleanDay, cleanKind, cleanMode, cleanText, cleanTime, fail, handle, json, organizerToken, participantToken, readJson,
 } from '@/lib/server/http';
+import { timeIn, validTz, zonedToUtc } from '@/lib/dates';
 import type { EventBundle } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 type Ctx = { params: Promise<{ slug: string }> };
 
-/** Everything the event page needs. Other people's addresses are never included. */
+/** Everything the event page needs. Addresses appear only for people who chose to show theirs. */
 export async function GET(req: Request, { params }: Ctx) {
   return handle(async () => {
     const { slug } = await params;
@@ -23,18 +26,19 @@ export async function GET(req: Request, { params }: Ctx) {
       plan: await planFor(l),
       me: me ? meView(l, me) : null,
       isOrganizer: isOrganizer(l, organizerToken(req)),
-      dateOptions: publicDateOptions(l),
+      availability: availabilityView(l),
     };
     return json(bundle);
   });
 }
 
 /**
- * Host-only: edit the outing, lock in the group pick, or manage the date vote:
- *   { startVoting: true }        open voting (the current date becomes the first option)
- *   { addDateOption: iso }       add a date/time to vote on
- *   { removeDateOption: id }     remove one
- *   { lockDate: optionId }       close the vote and set the outing to that date
+ * Host-only edits:
+ *   title, kind, midpointMode, chosenPlaceId (lock in the place)
+ *   startsAt (+ timezone)   set a fixed date and time
+ *   arriveTime              change the arrive-by time, keeping the day
+ *   lockDay: 'YYYY-MM-DD'   stop day-picking and fix the outing on that day
+ *   openDays: true          let everyone mark the days they're free again
  */
 export async function PATCH(req: Request, { params }: Ctx) {
   return handle(async () => {
@@ -45,8 +49,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const body = await readJson(req);
     const patch: Record<string, unknown> = {};
+    const tz = 'timezone' in body ? validTz(body.timezone) : tzOf(l.event);
+    if ('timezone' in body) patch.timezone = tz;
     if ('title' in body) patch.title = cleanText(body.title, 'Name', 80);
-    if ('startsAt' in body) patch.starts_at = cleanDate(body.startsAt);
     if ('midpointMode' in body) patch.midpoint_mode = cleanMode(body.midpointMode);
     if ('kind' in body) {
       patch.kind = cleanKind(body.kind);
@@ -68,30 +73,25 @@ export async function PATCH(req: Request, { params }: Ctx) {
       }
     }
 
-    // ----- date voting -----
-    const addOption = async (iso: string) => {
-      const { error } = await db()
-        .from('date_options')
-        .upsert({ event_id: l.event.id, starts_at: iso }, { onConflict: 'event_id,starts_at', ignoreDuplicates: true });
-      if (error) throw error;
-    };
-    if (body.startVoting === true) {
-      await addOption(l.event.starts_at);
-      patch.date_status = 'voting';
+    // ----- when -----
+    if ('startsAt' in body) {
+      patch.starts_at = cleanDate(body.startsAt);
+      patch.arrive_time = timeIn(patch.starts_at as string, tz);
     }
-    if ('addDateOption' in body) {
-      if (l.dateOptions.length >= 8) throw new HttpError(400, 'Up to 8 dates can be voted on');
-      await addOption(cleanDate(body.addDateOption));
+    if ('arriveTime' in body) {
+      const t = cleanTime(body.arriveTime);
+      patch.arrive_time = t;
+      const day = l.event.date_status === 'voting' ? availabilityView(l).bestDay ?? plannedDay(l.event) : plannedDay(l.event);
+      patch.starts_at = zonedToUtc(day, t, tz);
     }
-    if (typeof body.removeDateOption === 'string') {
-      const { error } = await db().from('date_options').delete().eq('id', body.removeDateOption).eq('event_id', l.event.id);
-      if (error) throw error;
-    }
-    if (typeof body.lockDate === 'string') {
-      const opt = l.dateOptions.find((o) => o.id === body.lockDate);
-      if (!opt) throw new HttpError(400, 'That date is no longer an option');
-      patch.starts_at = opt.starts_at;
+    if ('lockDay' in body) {
+      patch.starts_at = zonedToUtc(cleanDay(body.lockDay), (patch.arrive_time as string) ?? arriveTimeOf(l.event), tz);
       patch.date_status = 'set';
+    }
+    if (body.openDays === true) {
+      patch.date_status = 'voting';
+      const best = availabilityView(l).bestDay;
+      if (best) patch.starts_at = zonedToUtc(best, (patch.arrive_time as string) ?? arriveTimeOf(l.event), tz);
     }
 
     if (Object.keys(patch).length) {

@@ -4,13 +4,25 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import HostingMap from './HostingMap';
 import JoinForm from './JoinForm';
-import DatePoll from './DatePoll';
+import DayPicker from './DayPicker';
 import { DirectionsPanel, PlacesPanel } from './Panels';
 import { api, fmtDay, fmtTime, joinLocal, splitLocal } from '@/lib/client';
 import { MODE_LABEL, ROLES, categoriesFor, iconFor } from '@/lib/categories';
-import type { EventBundle, MyTrip, Vote } from '@/lib/types';
+import { fmtTimeKey } from '@/lib/dates';
+import type { EventBundle, MyTrip } from '@/lib/types';
 
 const POLL_MS = 20_000;
+const browserTz = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+};
+
+export function Wordmark() {
+  return <Link className="wordmark" href="/">GOING <span>OUT</span></Link>;
+}
 
 export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsKey: string; mapId: string }) {
   const [data, setData] = useState<EventBundle | null>(null);
@@ -48,7 +60,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
   // Re-fetch my directions only when something that affects them changes.
   const me = data?.me ?? null;
   const pool = data?.plan.carpools.find((c) => c.driverId === me?.id || c.riderIds.includes(me?.id ?? ''));
-  const tripKey = data && me && me.shareLocation && me.location
+  const tripKey = data && me && me.location
     ? JSON.stringify([data.plan.selectedPlaceId, data.event.startsAt, me.role, me.seats, me.location, pool])
     : null;
   useEffect(() => {
@@ -70,31 +82,17 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
 
   async function patchEvent(patch: Record<string, unknown>) {
     try {
-      await api(`/api/events/${slug}`, slug, { method: 'PATCH', json: patch });
+      await api(`/api/events/${slug}`, slug, { method: 'PATCH', json: { ...patch, timezone: data?.event.timezone ?? browserTz() } });
       await load();
     } catch (err) {
       alert((err as Error).message);
     }
   }
 
-  async function vote(optionId: string, v: Vote | null) {
-    try {
-      await api(`/api/events/${slug}/votes`, slug, { method: 'PUT', json: { optionId, vote: v } });
-      await load();
-    } catch (err) {
-      alert((err as Error).message);
-    }
-  }
-
-  /** The "Use my address" switch. Turning it on without a saved address opens the form to add one. */
-  async function toggleShare() {
+  async function toggleShowAddress() {
     if (!me) return;
-    if (!me.shareLocation && !me.address) {
-      setEditing(true);
-      return;
-    }
     try {
-      await api(`/api/events/${slug}/participants/me`, slug, { method: 'PATCH', json: { shareLocation: !me.shareLocation } });
+      await api(`/api/events/${slug}/participants/me`, slug, { method: 'PATCH', json: { showAddress: !me.showAddress } });
       await load();
     } catch (err) {
       alert((err as Error).message);
@@ -128,19 +126,17 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
   const tags = new Set(categoriesFor(event.kind).map((c) => c.key));
   const sorted = [...people].sort((a, b) => Number(b.id === me?.id) - Number(a.id === me?.id));
   const local = splitLocal(event.startsAt);
-  const voting = event.dateStatus === 'voting' && data.dateOptions.length > 0;
+  const picking = event.dateStatus === 'voting';
 
   return (
     <div className="app">
       <aside className="side">
-        <Link className="brand" href="/"><b>hosting<i>.</i></b></Link>
+        <Wordmark />
 
         <div className="card">
           {isOrganizer ? (
             <>
-              <div className="row" style={{ marginTop: 0, justifyContent: 'space-between' }}>
-                <span className="hostbadge">You&apos;re hosting</span>
-              </div>
+              <div className="row" style={{ marginTop: 0 }}><span className="hostbadge">You&apos;re hosting</span></div>
               <input
                 className="title"
                 defaultValue={event.title}
@@ -148,17 +144,21 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                 aria-label="Outing name"
                 onBlur={(e) => e.target.value.trim() && e.target.value !== event.title && patchEvent({ title: e.target.value })}
               />
-              {voting ? (
-                <div className="meta" style={{ marginTop: 6 }}>📅 Date: being voted on below</div>
+              {picking ? (
+                <>
+                  <span className="lbl">Arrive by</span>
+                  <div className="row" style={{ marginTop: 0 }}>
+                    <input type="time" defaultValue={event.arriveTime} key={'at' + event.arriveTime} onChange={(e) => e.target.value && patchEvent({ arriveTime: e.target.value })} />
+                  </div>
+                </>
               ) : (
                 <>
-                  <div className="row">
+                  <span className="lbl">When</span>
+                  <div className="row" style={{ marginTop: 0 }}>
                     <input type="date" defaultValue={local.date} key={'d' + event.startsAt} onChange={(e) => e.target.value && patchEvent({ startsAt: joinLocal(e.target.value, local.time) })} />
                     <input type="time" defaultValue={local.time} key={'t' + event.startsAt} onChange={(e) => e.target.value && patchEvent({ startsAt: joinLocal(local.date, e.target.value) })} />
                   </div>
-                  <button className="linkbtn" onClick={() => patchEvent({ startVoting: true })}>
-                    🗳️ {data.dateOptions.length ? 'Reopen the date vote' : 'Let everyone vote on the date instead'}
-                  </button>
+                  <button className="linkbtn" onClick={() => patchEvent({ openDays: true })}>📅 Let everyone pick the day instead</button>
                 </>
               )}
               <div className="row">
@@ -167,7 +167,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                   <button className={event.kind === 'activity' ? 'on' : ''} onClick={() => patchEvent({ kind: 'activity' })}>🎳 Activity</button>
                 </div>
               </div>
-              <span className="lbl">Pick the midpoint that&apos;s…</span>
+              <span className="lbl">Meeting spot that&apos;s…</span>
               <select value={event.midpointMode} onChange={(e) => patchEvent({ midpointMode: e.target.value })}>
                 <option value="fair">Fairest: shortest longest trip</option>
                 <option value="total">Least total travel for the group</option>
@@ -175,9 +175,11 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
             </>
           ) : (
             <>
-              <div className="title" style={{ fontFamily: 'var(--serif)', fontWeight: 700, fontSize: 19 }}>{event.title}</div>
-              <div className="meta">{voting ? '📅 Date: being voted on' : `${fmtDay(event.startsAt)} · arrive by ${fmtTime(event.startsAt)}`}</div>
-              <div className="meta">{event.kind === 'food' ? '🍽️ Food' : '🎳 Activity'} · {event.midpointMode === 'fair' ? 'fairest midpoint' : 'least total travel'}</div>
+              <div className="title">{event.title}</div>
+              <div className="meta">
+                {picking ? `📅 Day: being picked · arrive by ${fmtTimeKey(event.arriveTime)}` : `📅 ${fmtDay(event.startsAt)} · arrive by ${fmtTime(event.startsAt)}`}
+              </div>
+              <div className="meta">{event.kind === 'food' ? '🍽️ Food' : '🎳 Activity'} · {event.midpointMode === 'fair' ? 'fairest meeting spot' : 'least total travel'}</div>
             </>
           )}
           <span className="lbl">Invite link</span>
@@ -187,11 +189,11 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
           </div>
         </div>
 
-        {voting && <DatePoll data={data} onVote={vote} onHost={patchEvent} />}
+        {picking && <DayPicker slug={slug} data={data} onChanged={load} onJoin={() => setEditing(true)} onHost={patchEvent} />}
 
         <h3>
-          <span>Who&apos;s coming · {people.length}</span>
-          {!me && <button className="btn small ghost" onClick={() => setEditing(true)}>+ Join</button>}
+          <span>Who&apos;s going · {people.length}</span>
+          {!me && <button className="btn small" onClick={() => setEditing(true)}>+ Join</button>}
         </h3>
         {sorted.map((p) => {
           const mine = p.id === me?.id;
@@ -211,21 +213,15 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                 </div>
                 {mine ? (
                   <>
-                    <div className={`addr ${me!.shareLocation && me!.address ? 'mine' : ''}`}>
-                      {me!.shareLocation && me!.address
-                        ? `🔒 ${me!.address} · only you`
-                        : me!.address
-                          ? '📍 Address saved, but not being used'
-                          : '📍 No address added'}
-                    </div>
-                    <label className="switch" title="When off, you still count for food and activity picks, but not for the meeting spot, carpools or directions.">
-                      <input type="checkbox" checked={me!.shareLocation && !!me!.address} onChange={toggleShare} />
+                    <div className="addr mine">📍 {me!.address ?? 'No address yet'}</div>
+                    <label className="switch">
+                      <input type="checkbox" checked={me!.showAddress} onChange={toggleShowAddress} />
                       <span className="track" />
-                      Use my address
+                      {me!.showAddress ? 'Shown to the group' : 'Show my address to the group'}
                     </label>
                   </>
                 ) : (
-                  <div className="addr">{p.hasLocation ? '🔒 Address private' : '📍 Not sharing location'}</div>
+                  <div className={`addr ${p.address ? 'shown' : ''}`}>{p.address ? `📍 ${p.address}` : '🔒 Address private'}</div>
                 )}
                 <div className="chips">
                   {likes.length ? likes.map((t) => <span key={t} className="chip">{iconFor(t)} {t}</span>) : <span className="chip" style={{ opacity: 0.6 }}>Open to anything</span>}
@@ -237,37 +233,32 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                   {est.minutes}
                   <small>min · {est.unmatched ? 'no ride yet' : driverName ? `with ${driverName}` : MODE_LABEL[est.mode].label}</small>
                 </div>
-              ) : <div className="ptime"><small>{p.hasLocation ? '—' : 'not in\nthe midpoint'}</small></div>}
+              ) : <div className="ptime"><small>—</small></div>}
             </div>
           );
         })}
         {!people.length && <div className="empty" style={{ padding: 20 }}>No one yet. Share the invite link!</div>}
 
-        <div style={{ marginTop: 20 }}>
-          <h3>Carpools</h3>
-          {plan.carpools.filter((c) => c.riderIds.length || c.openSeats).map((c) => {
-            const d = people.find((p) => p.id === c.driverId);
-            if (!d) return null;
-            return (
-              <div key={c.driverId} className="pool">
-                <div className="ph"><span className="dot" style={{ background: d.color }} />🚗 {d.name} is driving</div>
-                <div className="seats">
-                  {c.riderIds.map((id) => <span key={id} className="seat">🙋 {people.find((p) => p.id === id)?.name}</span>)}
-                  {Array.from({ length: c.openSeats }, (_, i) => <span key={i} className="seat open">open seat</span>)}
-                </div>
+        <h3>Rides</h3>
+        {plan.carpools.filter((c) => c.riderIds.length || c.openSeats).map((c) => {
+          const d = people.find((p) => p.id === c.driverId);
+          if (!d) return null;
+          return (
+            <div key={c.driverId} className="pool">
+              <div className="ph"><span className="dot" style={{ background: d.color }} />🚗 {d.name} is driving</div>
+              <div className="seats">
+                {c.riderIds.map((id) => <span key={id} className="seat">🙋 {people.find((p) => p.id === id)?.name}</span>)}
+                {Array.from({ length: c.openSeats }, (_, i) => <span key={i} className="seat open">open seat</span>)}
               </div>
-            );
-          })}
-          {plan.unmatchedRiderIds.map((id) => (
-            <div key={id} className="pool warn">🙋 <b>{people.find((p) => p.id === id)?.name}</b> still needs a ride. All seats are taken.</div>
-          ))}
-          {people.filter((p) => p.role === 'rider' && !p.hasLocation).map((p) => (
-            <div key={p.id} className="pool warn">🙋 <b>{p.name}</b> needs a ride but isn&apos;t sharing an address, so no driver can be matched yet.</div>
-          ))}
-          {!plan.carpools.some((c) => c.riderIds.length || c.openSeats) && !plan.unmatchedRiderIds.length && (
-            <div className="pool" style={{ color: 'var(--muted)' }}>No drivers offering seats yet.</div>
-          )}
-        </div>
+            </div>
+          );
+        })}
+        {plan.unmatchedRiderIds.map((id) => (
+          <div key={id} className="pool warn">🙋 <b>{people.find((p) => p.id === id)?.name}</b> still needs a ride. All seats are taken.</div>
+        ))}
+        {!plan.carpools.some((c) => c.riderIds.length || c.openSeats) && !plan.unmatchedRiderIds.length && (
+          <div className="pool" style={{ color: 'var(--muted)' }}>No drivers offering seats yet.</div>
+        )}
       </aside>
 
       <main className={`mapwrap ${collapsed ? 'collapsed' : ''}`}>
@@ -288,26 +279,26 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
             }}
           />
           <div className="overlay top">
-            <div className="pill">🔒 Only your own home is on your map</div>
+            <div className="pill">🔒 Addresses stay private unless someone chooses to show theirs</div>
           </div>
           {plan.midpoint && (
             <div className="overlay bottom">
-              <div className="pill"><b style={{ color: 'var(--accent-ink)' }}>◎ Midpoint</b> longest trip from here ≈ {plan.midpointMaxMin} min (estimate)</div>
+              <div className="pill"><b>◎ Meeting spot</b> longest trip from here ≈ {plan.midpointMaxMin} min</div>
             </div>
           )}
         </div>
-        <button className="showpanel" onClick={() => setCollapsed(false)}>☰ Places &amp; directions</button>
+        <button className="showpanel" onClick={() => setCollapsed(false)}>☰ PLACES &amp; DIRECTIONS</button>
         <aside className="panel">
           <div className="tabs">
-            <button className={tab === 'places' ? 'on' : ''} onClick={() => setTab('places')}>Ranked places</button>
-            <button className={tab === 'route' ? 'on' : ''} onClick={() => setTab('route')}>Your directions</button>
+            <button className={tab === 'places' ? 'on' : ''} onClick={() => setTab('places')}>Places</button>
+            <button className={tab === 'route' ? 'on' : ''} onClick={() => setTab('route')}>Your route</button>
             <button className="collapse" onClick={() => setCollapsed(true)} title="Hide panel" aria-label="Hide panel">›</button>
           </div>
           <div className="pbody">
             {tab === 'places' ? (
               <PlacesPanel data={data} focusId={focusId} onFocus={setFocusId} onChoose={(id) => patchEvent({ chosenPlaceId: id })} />
             ) : (
-              <DirectionsPanel data={data} trip={trip} loading={tripLoading} error={tripError} onJoin={() => setEditing(true)} onUseAddress={toggleShare} />
+              <DirectionsPanel data={data} trip={trip} loading={tripLoading} error={tripError} onJoin={() => setEditing(true)} />
             )}
           </div>
         </aside>

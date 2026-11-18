@@ -2,16 +2,16 @@ import { db } from '@/lib/server/supabase';
 import { loadEvent } from '@/lib/server/data';
 import { placeLocation } from '@/lib/server/google';
 import { hashToken, newToken } from '@/lib/server/tokens';
-import { HttpError, cleanLikes, cleanRole, cleanSeats, cleanText, fail, handle, json, readJson } from '@/lib/server/http';
+import { cleanLikes, cleanRole, cleanSeats, cleanText, fail, handle, json, readJson } from '@/lib/server/http';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_PEOPLE = 40;
 
 /**
- * Join an outing. The address is optional: with `shareLocation: false` people can join
- * without one (they still count for food/activity picks, not for the midpoint or carpools).
- * Any address is resolved and stored server-side; the browser gets back only a secret token.
+ * Join an outing. The address is required (it's how the meeting spot is found) and is
+ * resolved and stored server-side. `showAddress: true` lets the rest of the group see it.
+ * The browser gets back only a secret token.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   return handle(async () => {
@@ -25,27 +25,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     const role = cleanRole(body.role);
     const seats = cleanSeats(body.seats, role);
     const likes = cleanLikes(body.likes);
-    const shareLocation = body.shareLocation !== false;
-    const placeId = typeof body.placeId === 'string' && body.placeId.trim() ? body.placeId.trim().slice(0, 300) : null;
-    if (shareLocation && !placeId) throw new HttpError(400, 'Pick your address from the suggestions, or turn off "Use my address"');
+    const placeId = cleanText(body.placeId, 'Address', 300);
     const sessionToken = typeof body.sessionToken === 'string' ? body.sessionToken.slice(0, 100) : undefined;
 
-    const place = placeId ? await placeLocation(placeId, sessionToken) : null;
+    const place = await placeLocation(placeId, sessionToken);
     const token = newToken();
 
     const row: Record<string, unknown> = { event_id: l.event.id, name, role, seats, likes, token_hash: hashToken(token) };
-    if (!shareLocation) row.share_location = false;
+    if (body.showAddress === true) row.show_address = true;
     const { data: p, error } = await db().from('participants').insert(row).select('id').single<{ id: string }>();
     if (error) throw error;
 
-    if (place) {
-      const { error: e2 } = await db()
-        .from('participant_locations')
-        .insert({ participant_id: p.id, address: place.address, lat: place.location.lat, lng: place.location.lng });
-      if (e2) {
-        await db().from('participants').delete().eq('id', p.id);
-        throw e2;
-      }
+    const { error: e2 } = await db()
+      .from('participant_locations')
+      .insert({ participant_id: p.id, address: place.address, lat: place.location.lat, lng: place.location.lng });
+    if (e2) {
+      await db().from('participants').delete().eq('id', p.id);
+      throw e2;
     }
     return json({ participantId: p.id, token }, 201);
   });
