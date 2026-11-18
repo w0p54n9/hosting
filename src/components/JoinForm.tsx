@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import AddressInput from './AddressInput';
-import { api, setStored } from '@/lib/client';
+import { api, clearDraft, loadDraft, saveDraft, setStored } from '@/lib/client';
 import { ACTIVITIES, FOOD, ROLES } from '@/lib/categories';
 import type { Me, PublicEvent, Role, StartFrom } from '@/lib/types';
 
@@ -11,18 +11,35 @@ interface Props {
   me: Me | null;
   office: PublicEvent['office'];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (joined: boolean) => void;
+}
+
+interface Draft {
+  name: string;
+  role: Role;
+  seats: number;
+  likes: string[];
+  address: { placeId: string | null; label: string };
+  showAddress: boolean;
+  startFrom: StartFrom;
 }
 
 export default function JoinForm({ slug, me, office, onClose, onSaved }: Props) {
   const isNew = !me;
-  const [name, setName] = useState(me?.name ?? '');
-  const [role, setRole] = useState<Role>(me?.role ?? 'transit');
-  const [seats, setSeats] = useState(me?.seats ?? 0);
-  const [likes, setLikes] = useState<string[]>(me?.likes ?? []);
-  const [address, setAddress] = useState<{ placeId: string | null; label: string }>({ placeId: null, label: me?.address ?? '' });
-  const [showAddress, setShowAddress] = useState(me?.showAddress ?? false);
-  const [startFrom, setStartFrom] = useState<StartFrom>(me?.startFrom ?? 'home');
+  // A half-filled join form is kept on this device, so closing the tab doesn't lose it.
+  const [draft] = useState(() => (isNew ? loadDraft<Draft>(slug) : null));
+  const [name, setName] = useState(me?.name ?? draft?.name ?? '');
+  const [role, setRole] = useState<Role>(me?.role ?? draft?.role ?? 'transit');
+  const [seats, setSeats] = useState(me?.seats ?? draft?.seats ?? 0);
+  const [likes, setLikes] = useState<string[]>(me?.likes ?? draft?.likes ?? []);
+  const [address, setAddress] = useState<{ placeId: string | null; label: string }>(
+    me ? { placeId: null, label: me.address ?? '' } : draft?.address ?? { placeId: null, label: '' },
+  );
+  const [showAddress, setShowAddress] = useState(me?.showAddress ?? draft?.showAddress ?? false);
+  const [startFrom, setStartFrom] = useState<StartFrom>(me?.startFrom ?? draft?.startFrom ?? 'home');
+  useEffect(() => {
+    if (isNew) saveDraft(slug, { name, role, seats, likes, address, showAddress, startFrom } satisfies Draft);
+  }, [isNew, slug, name, role, seats, likes, address, showAddress, startFrom]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,10 +66,11 @@ export default function JoinForm({ slug, me, office, onClose, onSaved }: Props) 
       if (isNew) {
         const r = await api<{ token: string }>(`/api/events/${slug}/participants`, slug, { method: 'POST', json: body });
         setStored(slug, { participantToken: r.token });
+        clearDraft(slug);
       } else {
         await api(`/api/events/${slug}/participants/me`, slug, { method: 'PATCH', json: body });
       }
-      onSaved();
+      onSaved(isNew);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -65,7 +83,7 @@ export default function JoinForm({ slug, me, office, onClose, onSaved }: Props) 
     try {
       await api(`/api/events/${slug}/participants/me`, slug, { method: 'DELETE' });
       setStored(slug, { participantToken: undefined });
-      onSaved();
+      onSaved(false);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -77,6 +95,12 @@ export default function JoinForm({ slug, me, office, onClose, onSaved }: Props) 
       <form className="sheet" onSubmit={save}>
         <h2>{isNew ? "I'm in" : 'Your details'}</h2>
         <p className="lead">{isNew ? 'Takes 30 seconds. Then mark the days you’re free.' : 'Changes update the plan for everyone.'}</p>
+        {isNew && (
+          <div className="note" style={{ margin: '-6px 0 16px' }}>
+            Already joined on another device? Open your <b>🔑 personal link</b> instead of joining again.
+            {draft && <> We kept what you started typing last time.</>}
+          </div>
+        )}
 
         <div className="field">
           <span className="lbl">Name</span>

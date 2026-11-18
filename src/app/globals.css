@@ -207,6 +207,7 @@ h3 { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color:
 .suggest button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 9px 12px; }
 .suggest button:hover { background: var(--surface-2); }
 .suggest small { display: block; color: var(--muted); }
+.linkbtns { display: flex; gap: 8px; flex-wrap: wrap; }
 .actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 20px; }
 .danger { background: none; border: 0; color: var(--warn); font-weight: 800; }
 .error { color: var(--warn); font-size: 13px; margin-top: 8px; font-weight: 600; }

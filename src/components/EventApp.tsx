@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import HostingMap from './HostingMap';
 import JoinForm from './JoinForm';
+import MyLinkSheet from './MyLinkSheet';
 import DayPicker from './DayPicker';
 import AddressInput, { type AddressValue } from './AddressInput';
 import { DirectionsPanel, PlacesPanel } from './Panels';
-import { api, fmtDay, fmtTime, joinLocal, splitLocal } from '@/lib/client';
+import { absorbLinkTokens, api, fmtDay, fmtTime, joinLocal, splitLocal } from '@/lib/client';
 import { MODE_LABEL, ROLES, categoriesFor, iconFor } from '@/lib/categories';
 import { fmtTimeKey } from '@/lib/dates';
 import type { EventBundle, MyTrip, StartFrom } from '@/lib/types';
@@ -37,6 +38,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
   const [tripLoading, setTripLoading] = useState(false);
   const [tripError, setTripError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [linkSheet, setLinkSheet] = useState<null | 'joined' | 'view'>(null);
   const [editingOffice, setEditingOffice] = useState(false);
   const [officeDraft, setOfficeDraft] = useState<AddressValue>({ placeId: null, label: '' });
   const officeSession = useMemo(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random())), []);
@@ -51,6 +53,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
   }, [slug]);
 
   useEffect(() => {
+    absorbLinkTokens(slug); // opened with a personal link? sign this browser in first
     load();
     const t = setInterval(() => document.visibilityState === 'visible' && load(), POLL_MS);
     return () => clearInterval(t);
@@ -219,6 +222,9 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
               {event.office && <div className="meta">🏢 Office: {event.office.address}</div>}
             </>
           )}
+          {isOrganizer && !me && (
+            <button className="linkbtn" onClick={() => setLinkSheet('view')}>🔑 My host link (to manage this outing from another device)</button>
+          )}
           <span className="lbl">Invite link</span>
           <div className="invite">
             <input readOnly value={typeof window !== 'undefined' ? `${window.location.origin}/e/${slug}` : `/e/${slug}`} onFocus={(e) => e.target.select()} />
@@ -270,7 +276,12 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                 <div className="chips">
                   {likes.length ? likes.map((t) => <span key={t} className="chip">{iconFor(t)} {t}</span>) : <span className="chip" style={{ opacity: 0.6 }}>Open to anything</span>}
                 </div>
-                {mine && <button className="linkbtn" onClick={() => setEditing(true)}>Edit my details →</button>}
+                {mine && (
+                  <div className="row" style={{ marginTop: 0, gap: 14 }}>
+                    <button className="linkbtn" onClick={() => setEditing(true)}>Edit my details →</button>
+                    <button className="linkbtn" onClick={() => setLinkSheet('view')}>🔑 My link</button>
+                  </div>
+                )}
               </div>
               {est ? (
                 <div className={`ptime ${est.unmatched ? 'warn' : ''}`}>
@@ -358,12 +369,17 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
             setEditing(false);
             setDismissedJoin(true);
           }}
-          onSaved={async () => {
+          onSaved={async (joined) => {
             setEditing(false);
             setDismissedJoin(true);
             await load();
+            if (joined) setLinkSheet('joined');
           }}
         />
+      )}
+
+      {linkSheet && (
+        <MyLinkSheet slug={slug} title={event.title} justJoined={linkSheet === 'joined'} isHost={isOrganizer} onClose={() => setLinkSheet(null)} />
       )}
     </div>
   );

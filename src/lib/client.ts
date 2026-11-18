@@ -25,6 +25,56 @@ export function setStored(slug: string, patch: Partial<Stored>): void {
   }
 }
 
+// ---------- personal "get back in" links ----------
+// The secret tokens ride in the URL *hash* (#me=...&host=...). Browsers never send the
+// hash to the server, so the tokens stay out of server logs.
+
+/** This browser's personal link for an outing (includes host access if this browser has it). */
+export function personalLink(slug: string): string | null {
+  const s = getStored(slug);
+  if (!s.participantToken && !s.organizerToken) return null;
+  const p = new URLSearchParams();
+  if (s.participantToken) p.set('me', s.participantToken);
+  if (s.organizerToken) p.set('host', s.organizerToken);
+  return `${window.location.origin}/e/${slug}#${p.toString()}`;
+}
+
+/** If the page was opened with a personal link, remember its tokens and tidy the address bar. */
+export function absorbLinkTokens(slug: string): void {
+  if (typeof window === 'undefined' || !window.location.hash) return;
+  const p = new URLSearchParams(window.location.hash.slice(1));
+  const me = p.get('me');
+  const host = p.get('host');
+  if (!me && !host) return;
+  setStored(slug, { ...(me ? { participantToken: me } : {}), ...(host ? { organizerToken: host } : {}) });
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+}
+
+// ---------- join form draft (survives closing the tab) ----------
+const draftKey = (slug: string) => `going-out-draft:${slug}`;
+export function loadDraft<T>(slug: string): T | null {
+  try {
+    const raw = localStorage.getItem(draftKey(slug));
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+export function saveDraft(slug: string, draft: unknown): void {
+  try {
+    localStorage.setItem(draftKey(slug), JSON.stringify(draft));
+  } catch {
+    /* ignore */
+  }
+}
+export function clearDraft(slug: string): void {
+  try {
+    localStorage.removeItem(draftKey(slug));
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function api<T>(path: string, slug: string | null, init: { method?: string; json?: unknown } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (slug) {
