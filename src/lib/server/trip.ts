@@ -2,7 +2,7 @@ import 'server-only';
 import { computeRoute, mapsLink, type RouteResult } from './google';
 import { estMinutes, timingFor } from './geo';
 import { matchCarpools } from './plan';
-import { toLatLng, usesLocation, type Loaded, type ParticipantRow } from './data';
+import { originLabel, originOf, startsAtOffice, type Loaded, type ParticipantRow } from './data';
 import type { LatLng, MyTrip, Plan, TravelMode, TripStep } from '../types';
 
 const PICKUP_MIN = 2; // time spent at each pickup
@@ -20,10 +20,12 @@ async function safeRoute(o: LatLng, d: LatLng, via: LatLng[], mode: TravelMode, 
 /** Directions for one person, built on the server so other people's addresses stay private. */
 export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Promise<MyTrip | null> {
   const venue = plan.venues.find((v) => v.placeId === plan.selectedPlaceId);
-  const myLoc = l.locations.get(me.id);
-  if (!venue || !myLoc || !usesLocation(l, me)) return null;
+  const origin = originOf(l, me);
+  if (!venue || !origin) return null;
 
-  const home = toLatLng(myLoc);
+  // 'home' below means "where I'm setting off from": my home, or the office.
+  const home = origin;
+  const fromOffice = startsAtOffice(l, me);
   const V = venue.location;
   const start = new Date(l.event.starts_at).getTime();
   const iso = (t: number) => new Date(t).toISOString();
@@ -31,7 +33,8 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
   const venueInfo = { name: venue.name, address: venue.address, location: V };
   const arrive: TripStep = { icon: '🏁', text: `Arrive at ${venue.name}`, highlight: true };
   const match = matchCarpools(l, V);
-  const locOf = (id: string) => toLatLng(l.locations.get(id)!);
+  const byId = new Map(l.people.map((p) => [p.id, p]));
+  const locOf = (id: string) => originOf(l, byId.get(id)!)!;
 
   // ----- Driver: route through each pickup -----
   if (me.role === 'driver') {
@@ -49,7 +52,7 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
       t += legMins[i] * 60_000;
       const at = t;
       t += PICKUP_MIN * 60_000;
-      return { name: r.name, address: l.locations.get(r.id)!.address, at: iso(at), location: locOf(r.id) };
+      return { name: r.name, address: originLabel(l, r), at: iso(at), location: locOf(r.id) };
     });
 
     const steps: TripStep[] = [];
@@ -75,6 +78,7 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
       estimated: !route,
       mapsUrl: mapsLink(home, venue, 'drive', stops),
       home,
+      fromOffice,
       venue: venueInfo,
     };
   }
@@ -108,7 +112,7 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
       arriveAt: iso(start),
       polyline: myRoute?.polyline ?? null,
       steps: [
-        { icon: '🙋', text: `${driver.name} picks you up at home`, highlight: true },
+        { icon: '🙋', text: `${driver.name} picks you up ${fromOffice ? 'at the office' : 'at home'}`, highlight: true },
         { icon: '🚗', text: 'Ride together', detail: `about ${minutes} min` },
         arrive,
       ],
@@ -116,6 +120,7 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
       estimated: !driverRoute,
       mapsUrl: mapsLink(home, venue, 'drive'),
       home,
+      fromOffice,
       venue: venueInfo,
     };
   }
@@ -138,6 +143,7 @@ export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Prom
     estimated: !route,
     mapsUrl: mapsLink(home, venue, mode),
     home,
+    fromOffice,
     venue: venueInfo,
   };
 }

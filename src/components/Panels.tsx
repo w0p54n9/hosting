@@ -150,7 +150,7 @@ export function DirectionsPanel({
         <div className={`leave ${trip.unmatched ? 'warn' : ''}`}>
           <div className="big">{fmtTime(trip.leaveAt)}</div>
           <div className="sub">
-            leave home<br />
+            {trip.fromOffice ? 'leave the office' : 'leave home'}<br />
             {m.icon} {trip.minutes} min {m.label}{trip.km ? ` · ${trip.km} km` : ''}
             {trip.pickups?.length ? ` · ${trip.pickups.length} pickup${trip.pickups.length > 1 ? 's' : ''}` : ''}
           </div>

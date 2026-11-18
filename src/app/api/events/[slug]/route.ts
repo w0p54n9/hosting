@@ -8,6 +8,7 @@ import {
 } from '@/lib/server/http';
 import { timeIn, validTz, zonedToUtc } from '@/lib/dates';
 import type { EventBundle } from '@/lib/types';
+import { officeFromPlace } from '@/lib/server/office';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,7 @@ export async function GET(req: Request, { params }: Ctx) {
  *   arriveTime              change the arrive-by time, keeping the day
  *   lockDay: 'YYYY-MM-DD'   stop day-picking and fix the outing on that day
  *   openDays: true          let everyone mark the days they're free again
+ *   officePlaceId           set the office address (from autocomplete); officePlaceId: null clears it
  */
 export async function PATCH(req: Request, { params }: Ctx) {
   return handle(async () => {
@@ -71,6 +73,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
         patch.chosen_place_id = v.placeId;
         patch.chosen_place = v;
       }
+    }
+
+    // ----- office -----
+    if ('officePlaceId' in body) {
+      patch.office =
+        typeof body.officePlaceId === 'string' && body.officePlaceId
+          ? await officeFromPlace(body.officePlaceId, typeof body.sessionToken === 'string' ? body.sessionToken : undefined)
+          : null;
     }
 
     // ----- when -----

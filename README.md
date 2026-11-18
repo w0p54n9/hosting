@@ -4,6 +4,7 @@ Plan the night, not the logistics. Going Out helps a group (coworkers, friends) 
 
 - **Everyone picks the days they're free** on a calendar. The day most people can make is used automatically, and the host can lock it in.
 
+- **Start from home or the office.** The host can add an office address; each person picks whether they're setting off from home or from the office, and everything (meeting spot, rides, directions) is worked out from there.
 - **Everyone adds their address.** It's private by default. Each person can switch on *Show my address to the group*, and then others see it and their home appears on everyone's map.
 - **A fair midpoint.** Either the spot with the *shortest longest trip* (fairest) or the *least total travel*.
 - **Ranked places** from Google Maps near that midpoint, scored by how many people are into each category and how far each person has to travel (real travel times by each person's own mode).
@@ -33,7 +34,7 @@ Two things are worth knowing:
 
 ### 1. Supabase
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), then [`0002_availability_and_show_address.sql`](supabase/migrations/0002_availability_and_show_address.sql).
+2. Open **SQL Editor** and run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), then [`0002_availability_and_show_address.sql`](supabase/migrations/0002_availability_and_show_address.sql) and [`0003_office_start.sql`](supabase/migrations/0003_office_start.sql).
 3. From **Project Settings → API** copy the project URL and the **service_role** key.
 
 ### 2. Google Maps Platform

@@ -13,6 +13,7 @@ export interface LatLng {
 }
 
 export type DateStatus = 'set' | 'voting'; // 'voting' = everyone marks the days they're free
+export type StartFrom = 'home' | 'office';
 
 export interface PublicEvent {
   slug: string;
@@ -24,6 +25,8 @@ export interface PublicEvent {
   dateStatus: DateStatus;
   arriveTime: string; // 'HH:MM' in the outing's time zone
   timezone: string; // IANA, e.g. America/Toronto
+  /** Shared starting point people can choose instead of home (set by the host). */
+  office: { address: string; location: LatLng } | null;
 }
 
 /** Who is free on which day ('YYYY-MM-DD' -> participant ids). */
@@ -41,6 +44,7 @@ export interface PublicPerson {
   likes: string[];
   color: string;
   hasLocation: boolean;
+  startFrom: StartFrom;
   /** Only present when this person switched on "Show my address to the group". */
   address?: string;
   home?: LatLng;
@@ -98,6 +102,7 @@ export interface Me {
   seats: number;
   likes: string[];
   showAddress: boolean;
+  startFrom: StartFrom;
   address: string | null;
   location: LatLng | null;
 }
@@ -138,6 +143,7 @@ export interface MyTrip {
   pickupAt?: string;
   unmatched?: boolean;
   estimated?: boolean;
+  fromOffice?: boolean;
   mapsUrl: string;
   home: LatLng;
   venue: { name: string; address: string; location: LatLng };

@@ -6,6 +6,7 @@ import { decodePolyline } from '@/lib/client';
 import type { Me, MyTrip, Plan, PublicPerson } from '@/lib/types';
 
 interface Props {
+  officeLoc?: { lat: number; lng: number } | null;
   apiKey: string;
   mapId: string;
   plan: Plan;
@@ -40,12 +41,13 @@ export default function HostingMap(props: Props) {
   );
 }
 
-function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: Props) {
+function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue, officeLoc }: Props) {
   const map = useMap();
   const top = plan.venues.slice(0, 8);
   const selected = plan.venues.find((v) => v.placeId === plan.selectedPlaceId) ?? null;
   const myColor = people.find((p) => p.id === me?.id)?.color ?? '#d7ff3a';
-  const home = me?.location ?? null;
+  const home = me && me.startFrom !== 'office' ? me.location : null;
+  const office = officeLoc ?? null;
   // Other people's homes, only for those who chose "Show my address to the group".
   const shownHomes = people.filter((p) => p.home && p.id !== me?.id);
 
@@ -73,13 +75,14 @@ function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: P
   // Fit what matters to you: home, route, midpoint, top picks.
   const fitKey = useMemo(
     () =>
-      JSON.stringify([home, plan.midpoint, top.map((v) => v.placeId), trip?.polyline?.length ?? 0, trip?.pickups?.length ?? 0, panelOpen]),
-    [home, plan.midpoint, top, trip?.polyline, trip?.pickups, panelOpen],
+      JSON.stringify([home, office, me?.startFrom, plan.midpoint, top.map((v) => v.placeId), trip?.polyline?.length ?? 0, trip?.pickups?.length ?? 0, panelOpen]),
+    [home, office, me?.startFrom, plan.midpoint, top, trip?.polyline, trip?.pickups, panelOpen],
   );
   useEffect(() => {
     if (!map) return;
     const b = new google.maps.LatLngBounds();
     if (home) b.extend(home);
+    if (office && me?.startFrom === 'office') b.extend(office);
     if (plan.midpoint) b.extend(plan.midpoint);
     top.forEach((v) => b.extend(v.location));
     if (selected) b.extend(selected.location);
@@ -125,6 +128,11 @@ function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: P
       {home && (
         <AdvancedMarker position={home} title="Your home (only you see this)" zIndex={20}>
           <div className="m-home" style={{ background: myColor }}>⌂</div>
+        </AdvancedMarker>
+      )}
+      {office && (
+        <AdvancedMarker position={office} title="The office" zIndex={18}>
+          <div className="m-office">🏢</div>
         </AdvancedMarker>
       )}
       {shownHomes.map((p) => (

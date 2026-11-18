@@ -1,15 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import HostingMap from './HostingMap';
 import JoinForm from './JoinForm';
 import DayPicker from './DayPicker';
+import AddressInput, { type AddressValue } from './AddressInput';
 import { DirectionsPanel, PlacesPanel } from './Panels';
 import { api, fmtDay, fmtTime, joinLocal, splitLocal } from '@/lib/client';
 import { MODE_LABEL, ROLES, categoriesFor, iconFor } from '@/lib/categories';
 import { fmtTimeKey } from '@/lib/dates';
-import type { EventBundle, MyTrip } from '@/lib/types';
+import type { EventBundle, MyTrip, StartFrom } from '@/lib/types';
 
 const POLL_MS = 20_000;
 const browserTz = () => {
@@ -36,6 +37,9 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
   const [tripLoading, setTripLoading] = useState(false);
   const [tripError, setTripError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [editingOffice, setEditingOffice] = useState(false);
+  const [officeDraft, setOfficeDraft] = useState<AddressValue>({ placeId: null, label: '' });
+  const officeSession = useMemo(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random())), []);
 
   const load = useCallback(async () => {
     try {
@@ -61,7 +65,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
   const me = data?.me ?? null;
   const pool = data?.plan.carpools.find((c) => c.driverId === me?.id || c.riderIds.includes(me?.id ?? ''));
   const tripKey = data && me && me.location
-    ? JSON.stringify([data.plan.selectedPlaceId, data.event.startsAt, me.role, me.seats, me.location, pool])
+    ? JSON.stringify([data.plan.selectedPlaceId, data.event.startsAt, me.role, me.seats, me.location, me.startFrom, data.event.office, pool])
     : null;
   useEffect(() => {
     if (!tripKey) {
@@ -87,6 +91,23 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
     } catch (err) {
       alert((err as Error).message);
     }
+  }
+
+  async function setStartFrom(startFrom: StartFrom) {
+    if (!me || me.startFrom === startFrom) return;
+    try {
+      await api(`/api/events/${slug}/participants/me`, slug, { method: 'PATCH', json: { startFrom } });
+      await load();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
+
+  async function saveOffice(clear = false) {
+    if (!clear && !officeDraft.placeId) return alert('Pick the office address from the suggestions');
+    await patchEvent(clear ? { officePlaceId: null } : { officePlaceId: officeDraft.placeId, sessionToken: officeSession });
+    setEditingOffice(false);
+    setOfficeDraft({ placeId: null, label: '' });
   }
 
   async function toggleShowAddress() {
@@ -172,6 +193,21 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                 <option value="fair">Fairest: shortest longest trip</option>
                 <option value="total">Least total travel for the group</option>
               </select>
+              <span className="lbl">Office (optional starting point)</span>
+              {editingOffice ? (
+                <>
+                  <AddressInput value={officeDraft} onChange={setOfficeDraft} sessionToken={officeSession} placeholder="Search for the office address" bare />
+                  <div className="row">
+                    <button className="btn small" onClick={() => saveOffice()}>Save office</button>
+                    <button className="btn small ghost" onClick={() => setEditingOffice(false)}>Cancel</button>
+                    {event.office && <button className="linkbtn" style={{ marginTop: 0, marginLeft: 'auto' }} onClick={() => saveOffice(true)}>Remove</button>}
+                  </div>
+                </>
+              ) : event.office ? (
+                <div className="meta">🏢 {event.office.address} <button className="linkbtn" onClick={() => setEditingOffice(true)}>Change</button></div>
+              ) : (
+                <button className="linkbtn" style={{ marginTop: 0 }} onClick={() => setEditingOffice(true)}>🏢 Add an office address so people can head over from work</button>
+              )}
             </>
           ) : (
             <>
@@ -180,6 +216,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                 {picking ? `📅 Day: being picked · arrive by ${fmtTimeKey(event.arriveTime)}` : `📅 ${fmtDay(event.startsAt)} · arrive by ${fmtTime(event.startsAt)}`}
               </div>
               <div className="meta">{event.kind === 'food' ? '🍽️ Food' : '🎳 Activity'} · {event.midpointMode === 'fair' ? 'fairest meeting spot' : 'least total travel'}</div>
+              {event.office && <div className="meta">🏢 Office: {event.office.address}</div>}
             </>
           )}
           <span className="lbl">Invite link</span>
@@ -209,11 +246,18 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
                   <span className="role">
                     {ROLES[p.role].icon} {ROLES[p.role].label}
                     {p.role === 'driver' && p.seats ? ` · ${p.seats} seat${p.seats > 1 ? 's' : ''}` : ''}
+                    {p.startFrom === 'office' ? ' · 🏢 from the office' : event.office ? ' · 🏠 from home' : ''}
                   </span>
                 </div>
                 {mine ? (
                   <>
                     <div className="addr mine">📍 {me!.address ?? 'No address yet'}</div>
+                    {event.office && (
+                      <div className="seg mini" role="group" aria-label="Setting off from">
+                        <button className={me!.startFrom === 'home' ? 'on' : ''} onClick={() => setStartFrom('home')}>🏠 From home</button>
+                        <button className={me!.startFrom === 'office' ? 'on' : ''} onClick={() => setStartFrom('office')}>🏢 From the office</button>
+                      </div>
+                    )}
                     <label className="switch">
                       <input type="checkbox" checked={me!.showAddress} onChange={toggleShowAddress} />
                       <span className="track" />
@@ -264,6 +308,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
       <main className={`mapwrap ${collapsed ? 'collapsed' : ''}`}>
         <div className="stage">
           <HostingMap
+            officeLoc={event.office?.location ?? null}
             apiKey={mapsKey}
             mapId={mapId}
             plan={plan}
@@ -308,6 +353,7 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
         <JoinForm
           slug={slug}
           me={me}
+          office={event.office}
           onClose={() => {
             setEditing(false);
             setDismissedJoin(true);

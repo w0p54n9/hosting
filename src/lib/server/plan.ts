@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { db } from './supabase';
 import { routeMatrix, searchText } from './google';
 import { driveMinutesForKm, estMinutes, findMidpoint, haversineKm, timingFor } from './geo';
-import { toLatLng, usesLocation, type Loaded, type ParticipantRow } from './data';
+import { originOf, usesLocation, type Loaded, type ParticipantRow } from './data';
 import { categoriesFor, travelModeOf } from '../categories';
 import type { LatLng, PersonEstimate, Plan, RankedVenue, TravelMode, Venue } from '../types';
 
@@ -21,7 +21,7 @@ const MAX_VENUES = 20;
 function located(l: Loaded) {
   return l.people
     .filter((p) => usesLocation(l, p))
-    .map((p) => ({ p, loc: toLatLng(l.locations.get(p.id)!), mode: travelModeOf(p.role) as TravelMode }));
+    .map((p) => ({ p, loc: originOf(l, p)!, mode: travelModeOf(p.role) as TravelMode }));
 }
 
 function inputHash(l: Loaded): string {
@@ -131,7 +131,8 @@ export interface CarpoolMatch {
 
 /** Greedy: give each rider to the driver with the smallest detour, then order pickups nearest-first. */
 export function matchCarpools(l: Loaded, venue: LatLng): CarpoolMatch {
-  const loc = (id: string) => toLatLng(l.locations.get(id)!);
+  const byId = new Map(l.people.map((p) => [p.id, p]));
+  const loc = (id: string) => originOf(l, byId.get(id)!)!;
   const drivers = l.people.filter((p) => p.role === 'driver' && p.seats > 0 && usesLocation(l, p));
   const riders = l.people.filter((p) => p.role === 'rider' && usesLocation(l, p));
   const cap = new Map(drivers.map((d) => [d.id, d.seats]));
@@ -221,7 +222,7 @@ export function derivePlan(l: Loaded, core: Core): Plan {
         let km = 0;
         let cur = loc;
         for (const r of riders) {
-          const rl = toLatLng(l.locations.get(r.id)!);
+          const rl = originOf(l, r)!;
           km += haversineKm(cur, rl);
           cur = rl;
         }

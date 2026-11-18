@@ -2,7 +2,7 @@ import { db } from '@/lib/server/supabase';
 import { loadEvent } from '@/lib/server/data';
 import { placeLocation } from '@/lib/server/google';
 import { hashToken, newToken } from '@/lib/server/tokens';
-import { cleanLikes, cleanRole, cleanSeats, cleanText, fail, handle, json, readJson } from '@/lib/server/http';
+import { cleanLikes, cleanRole, cleanSeats, cleanStartFrom, cleanText, fail, handle, json, readJson } from '@/lib/server/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
 
     const row: Record<string, unknown> = { event_id: l.event.id, name, role, seats, likes, token_hash: hashToken(token) };
     if (body.showAddress === true) row.show_address = true;
+    if (cleanStartFrom(body.startFrom) === 'office') row.start_from = 'office';
     const { data: p, error } = await db().from('participants').insert(row).select('id').single<{ id: string }>();
     if (error) throw error;
 

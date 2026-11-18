@@ -2,7 +2,7 @@ import { db } from '@/lib/server/supabase';
 import { findParticipant, loadEvent } from '@/lib/server/data';
 import { placeLocation } from '@/lib/server/google';
 import { syncPlannedDate } from '@/lib/server/schedule';
-import { cleanLikes, cleanRole, cleanSeats, cleanText, fail, handle, json, participantToken, readJson } from '@/lib/server/http';
+import { cleanLikes, cleanRole, cleanSeats, cleanStartFrom, cleanText, fail, handle, json, participantToken, readJson } from '@/lib/server/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +25,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if ('seats' in body || 'role' in body) patch.seats = cleanSeats('seats' in body ? body.seats : me.seats, role);
     if ('likes' in body) patch.likes = cleanLikes(body.likes);
     if ('showAddress' in body) patch.show_address = body.showAddress === true;
+    if ('startFrom' in body) patch.start_from = cleanStartFrom(body.startFrom);
 
     if (Object.keys(patch).length) {
       const { error } = await db().from('participants').update(patch).eq('id', me.id);

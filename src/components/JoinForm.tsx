@@ -1,24 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
+import AddressInput from './AddressInput';
 import { api, setStored } from '@/lib/client';
 import { ACTIVITIES, FOOD, ROLES } from '@/lib/categories';
-import type { Me, Role } from '@/lib/types';
+import type { Me, PublicEvent, Role, StartFrom } from '@/lib/types';
 
 interface Props {
   slug: string;
   me: Me | null;
+  office: PublicEvent['office'];
   onClose: () => void;
   onSaved: () => void;
 }
 
-interface Suggestion {
-  placeId: string;
-  main: string;
-  secondary: string;
-}
-
-export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
+export default function JoinForm({ slug, me, office, onClose, onSaved }: Props) {
   const isNew = !me;
   const [name, setName] = useState(me?.name ?? '');
   const [role, setRole] = useState<Role>(me?.role ?? 'transit');
@@ -26,6 +22,7 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
   const [likes, setLikes] = useState<string[]>(me?.likes ?? []);
   const [address, setAddress] = useState<{ placeId: string | null; label: string }>({ placeId: null, label: me?.address ?? '' });
   const [showAddress, setShowAddress] = useState(me?.showAddress ?? false);
+  const [startFrom, setStartFrom] = useState<StartFrom>(me?.startFrom ?? 'home');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +43,7 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
         seats: role === 'driver' ? seats : 0,
         likes,
         showAddress,
+        startFrom: office ? startFrom : 'home',
         ...(address.placeId ? { placeId: address.placeId, sessionToken } : {}),
       };
       if (isNew) {
@@ -100,6 +98,21 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
         </div>
 
         <div className="field">
+          <span className="lbl">Setting off from</span>
+          <div className="seg" style={{ marginTop: 7 }}>
+            <button type="button" className={startFrom === 'home' ? 'on' : ''} onClick={() => setStartFrom('home')}>🏠 Home</button>
+            <button type="button" className={startFrom === 'office' ? 'on' : ''} disabled={!office} onClick={() => setStartFrom('office')}>🏢 The office</button>
+          </div>
+          <div className="hint">
+            {!office
+              ? 'The host hasn’t added an office address, so everyone sets off from home.'
+              : startFrom === 'office'
+                ? `You’ll be routed from ${office.address}. If you need a ride, your driver picks you up there.`
+                : 'You’ll be routed from your home address.'}
+          </div>
+        </div>
+
+        <div className="field">
           <span className="lbl">How are you getting there?</span>
           <div className="opts">
             {(Object.keys(ROLES) as Role[]).map((r) => (
@@ -147,79 +160,6 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
           </div>
         </div>
       </form>
-    </div>
-  );
-}
-
-function AddressInput({
-  value,
-  onChange,
-  sessionToken,
-}: {
-  value: { placeId: string | null; label: string };
-  onChange: (v: { placeId: string | null; label: string }) => void;
-  sessionToken: string;
-}) {
-  const [q, setQ] = useState(value.label);
-  const [list, setList] = useState<Suggestion[]>([]);
-  const [open, setOpen] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    if (timer.current) clearTimeout(timer.current);
-    if (q.trim().length < 3) {
-      setList([]);
-      return;
-    }
-    timer.current = setTimeout(async () => {
-      try {
-        const r = await api<{ suggestions: Suggestion[] }>(
-          `/api/places/autocomplete?q=${encodeURIComponent(q)}&session=${encodeURIComponent(sessionToken)}`,
-          null,
-        );
-        setList(r.suggestions);
-      } catch {
-        setList([]);
-      }
-    }, 250);
-  }, [q, open, sessionToken]);
-
-  return (
-    <div className="field">
-      <span className="lbl">Home address</span>
-      <input
-        type="text"
-        value={q}
-        placeholder="Start typing your address"
-        autoComplete="off"
-        onChange={(e) => {
-          setQ(e.target.value);
-          setOpen(true);
-          onChange({ placeId: null, label: e.target.value });
-        }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-      />
-      {open && list.length > 0 && (
-        <div className="suggest">
-          {list.map((s) => (
-            <button
-              type="button"
-              key={s.placeId}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                const label = [s.main, s.secondary].filter(Boolean).join(', ');
-                setQ(label);
-                setOpen(false);
-                onChange({ placeId: s.placeId, label });
-              }}
-            >
-              {s.main}
-              <small>{s.secondary}</small>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

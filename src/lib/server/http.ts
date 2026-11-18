@@ -1,7 +1,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { ALL_KEYS } from '../categories';
-import type { EventKind, MidpointMode, Role } from '../types';
+import type { EventKind, MidpointMode, Role, StartFrom } from '../types';
 import { addDays, isDay, isTime } from '../dates';
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
@@ -88,3 +88,5 @@ export function cleanDays(v: unknown, today: string): string[] {
   const last = addDays(today, 186);
   return [...new Set(v.filter(isDay))].filter((d) => d >= today && d <= last).sort().slice(0, 120);
 }
+
+export const cleanStartFrom = (v: unknown): StartFrom => (v === 'office' ? 'office' : 'home');

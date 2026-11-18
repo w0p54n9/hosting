@@ -3,7 +3,13 @@ import { db } from './supabase';
 import { hashToken } from './tokens';
 import { PERSON_COLORS } from '../categories';
 import { bestDay, dayIn, timeIn, todayIn, validTz } from '../dates';
-import type { Availability, DateStatus, EventKind, LatLng, Me, MidpointMode, PublicEvent, PublicPerson, Role, Venue } from '../types';
+import type { Availability, DateStatus, EventKind, LatLng, Me, MidpointMode, PublicEvent, PublicPerson, Role, StartFrom, Venue } from '../types';
+
+export interface Office {
+  address: string;
+  lat: number;
+  lng: number;
+}
 
 export interface EventRow {
   id: string;
@@ -19,6 +25,7 @@ export interface EventRow {
   date_status?: DateStatus;
   arrive_time?: string | null;
   timezone?: string | null;
+  office?: Office | null;
   created_at: string;
 }
 
@@ -30,6 +37,7 @@ export interface ParticipantRow {
   seats: number;
   likes: string[];
   show_address?: boolean;
+  start_from?: StartFrom;
   token_hash: string;
   created_at: string;
 }
@@ -82,8 +90,24 @@ export async function loadEvent(slug: string): Promise<Loaded | null> {
 
 export const toLatLng = (l: LocationRow): LatLng => ({ lat: l.lat, lng: l.lng });
 
-/** True when we have this person's address to plan with. */
-export const usesLocation = (l: Loaded, p: ParticipantRow) => l.locations.has(p.id);
+/** Starting from the office only counts when the host has set one. */
+export const startsAtOffice = (l: Loaded, p: ParticipantRow) => p.start_from === 'office' && !!l.event.office;
+
+/** Where this person sets off from for this outing: the office, or their home. */
+export function originOf(l: Loaded, p: ParticipantRow): LatLng | null {
+  if (startsAtOffice(l, p)) return { lat: l.event.office!.lat, lng: l.event.office!.lng };
+  const loc = l.locations.get(p.id);
+  return loc ? toLatLng(loc) : null;
+}
+
+/** Human-readable starting point, e.g. for a driver's pickup list. */
+export function originLabel(l: Loaded, p: ParticipantRow): string {
+  if (startsAtOffice(l, p)) return `the office (${l.event.office!.address})`;
+  return l.locations.get(p.id)?.address ?? '';
+}
+
+/** True when we know where this person is starting from. */
+export const usesLocation = (l: Loaded, p: ParticipantRow) => originOf(l, p) !== null;
 
 export function findParticipant(l: Loaded, token: string | null): ParticipantRow | null {
   if (!token) return null;
@@ -109,6 +133,7 @@ export function publicEvent(e: EventRow): PublicEvent {
     dateStatus: e.date_status === 'voting' ? 'voting' : 'set',
     arriveTime: arriveTimeOf(e),
     timezone: tzOf(e),
+    office: e.office ? { address: e.office.address, location: { lat: e.office.lat, lng: e.office.lng } } : null,
   };
 }
 
@@ -138,6 +163,7 @@ export function publicPeople(l: Loaded): PublicPerson[] {
       likes: p.likes,
       color: PERSON_COLORS[i % PERSON_COLORS.length],
       hasLocation: !!loc,
+      startFrom: startsAtOffice(l, p) ? 'office' : 'home',
       ...(shown ? { address: loc.address, home: toLatLng(loc) } : {}),
     };
   });
@@ -153,6 +179,7 @@ export function meView(l: Loaded, p: ParticipantRow): Me {
     seats: p.seats,
     likes: p.likes,
     showAddress: p.show_address === true,
+    startFrom: startsAtOffice(l, p) ? 'office' : 'home',
     address: loc?.address ?? null,
     location: loc ? toLatLng(loc) : null,
   };

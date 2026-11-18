@@ -2,6 +2,7 @@ import { db } from '@/lib/server/supabase';
 import { newSlug, newToken, hashToken } from '@/lib/server/tokens';
 import { cleanDate, cleanKind, cleanMode, cleanText, cleanTime, handle, json, readJson } from '@/lib/server/http';
 import { addDays, timeIn, todayIn, validTz, zonedToUtc } from '@/lib/dates';
+import { officeFromPlace } from '@/lib/server/office';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,10 @@ export async function POST(req: Request) {
       startsAt = cleanDate(body.startsAt);
       arriveTime = timeIn(startsAt, timezone);
     }
+    const office =
+      typeof body.officePlaceId === 'string' && body.officePlaceId
+        ? await officeFromPlace(body.officePlaceId, typeof body.sessionToken === 'string' ? body.sessionToken : undefined)
+        : null;
     const organizerToken = newToken();
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -43,6 +48,7 @@ export async function POST(req: Request) {
         date_status: voting ? 'voting' : 'set',
         arrive_time: arriveTime,
         timezone,
+        ...(office ? { office } : {}),
       });
       if (!error) return json({ slug, organizerToken }, 201);
       if (error.code !== '23505') throw error; // retry only on slug collision

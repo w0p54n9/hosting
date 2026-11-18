@@ -1,7 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
+import AddressInput, { type AddressValue } from '@/components/AddressInput';
 import { api, joinLocal, setStored, splitLocal } from '@/lib/client';
 import type { EventKind, MidpointMode } from '@/lib/types';
 
@@ -29,6 +30,8 @@ export default function Home() {
   const [time, setTime] = useState(initial.time);
   const [kind, setKind] = useState<EventKind>('food');
   const [mode, setMode] = useState<MidpointMode>('fair');
+  const [office, setOffice] = useState<AddressValue>({ placeId: null, label: '' });
+  const officeSession = useMemo(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random())), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +47,7 @@ export default function Home() {
           kind,
           midpointMode: mode,
           timezone: browserTz(),
+          ...(office.placeId ? { officePlaceId: office.placeId, sessionToken: officeSession } : {}),
           ...(everyonePicks ? { dateMode: 'days', arriveTime: time } : { dateMode: 'pick', startsAt: joinLocal(date, time) }),
         },
       });
@@ -88,6 +92,14 @@ export default function Home() {
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
           </div>
         </div>
+        <AddressInput
+          value={office}
+          onChange={setOffice}
+          sessionToken={officeSession}
+          label="Office address (optional)"
+          placeholder="So people can head over straight from work"
+        />
+
         <div className="field">
           <span className="lbl">Going for</span>
           <div className="seg" style={{ marginTop: 7 }}>
