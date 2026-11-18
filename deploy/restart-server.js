@@ -1,7 +1,7 @@
 // Force a clean restart of the app on cPanel/LiteSpeed.
 //
 // Run it from cPanel → Setup Node.js App → (edit app) → "Run JS script" → restart-server.
-// It stops any running copy of this app's server process (LiteSpeed's "lsnode"),
+// It stops any running copy of this app's server process (LiteSpeed's "lsnode" / Next.js "next-server"),
 // so the web server starts a fresh one on the next visit. It writes what it did to
 // restart-log.txt in the app folder.
 
@@ -23,7 +23,8 @@ for (const line of listing.split('\n')) {
   const pid = Number(m[1]);
   const args = m[3];
   if (keep.has(pid)) continue;
-  if (!/lsnode/.test(args)) continue; // only the web server's Node.js app processes
+  // The web server's app processes: LiteSpeed's 'lsnode:' wrapper, or Next.js, which renames itself 'next-server'.
+  if (!/lsnode|next-server/.test(args)) continue;
   try {
     process.kill(pid, 'SIGTERM');
     stopped.push(`${pid}  ${args}`);
@@ -37,7 +38,7 @@ const report = [
   'Processes:',
   listing.trim(),
   '',
-  stopped.length ? 'Stopped:' : 'Nothing to stop (no lsnode processes found).',
+  stopped.length ? 'Stopped:' : 'Nothing to stop (no app processes found).',
   ...stopped,
   '',
 ].join('\n');
