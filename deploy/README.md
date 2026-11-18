@@ -14,3 +14,7 @@ No `npm install` and no build step are needed. Everything is already in `standal
 
 To update: cPanel → Git Version Control → Manage → Pull or Deploy → **Update from Remote**,
 then cPanel → Setup Node.js App → **Restart**.
+
+If an old page keeps showing after an update, the web server's cache is holding on to it:
+open `https://<your-domain>/api/cache/purge` once to clear it.
+To force a clean restart, use Setup Node.js App → Run JS script → `restart-server`.
