@@ -203,7 +203,7 @@ export function describeChanges(before: Snapshot, now: Snapshot): string[] {
   if (joined.length) out.push(`${names(joined)} joined`);
   if (left.length) out.push(`${names(left)} left`);
   if (now.startsAt !== before.startsAt) out.push(`The day moved to ${fmtDay(now.startsAt)}, ${fmtTime(now.startsAt)}`);
-  else if (now.dateStatus !== before.dateStatus) out.push(now.dateStatus === 'set' ? 'The day is locked in' : 'Everyone is picking the day again');
+  else if (now.dateStatus !== before.dateStatus && !(now.finalized && !before.finalized)) out.push(now.dateStatus === 'set' ? 'The day is locked in' : 'Everyone is picking the day again');
   if (now.placeId && now.placeId !== before.placeId && now.placeName) out.push(`The top place is now ${now.placeName}`);
   return out;
 }

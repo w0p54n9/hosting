@@ -179,7 +179,7 @@ export function FinalPlan({ data, onHost }: { data: EventBundle; onHost: (patch:
   if (!place) return null;
   const when = `${fmtDay(event.startsAt)} · arrive by ${fmtTime(event.startsAt)}`;
   const needList = NEEDS.filter((n) => needs[n.key]).map((n) => `${needs[n.key]} ${n.label.toLowerCase()}`);
-  const headcount = progress.going + (progress.maybe ? ` (+${progress.maybe} maybe)` : '');
+  const headcount = `${progress.going} going${progress.maybe ? ` · ${progress.maybe} maybe` : ''}`;
 
   async function announce() {
     await copyText(
@@ -195,7 +195,7 @@ export function FinalPlan({ data, onHost }: { data: EventBundle; onHost: (patch:
       <div className="display finaltitle">{event.title}</div>
       <div className="finalrow"><span>📅</span><b>{when}</b></div>
       <div className="finalrow"><span>📍</span><div><b>{place.name}</b>{place.priceLevel && PRICE[place.priceLevel] ? <span className="price">{PRICE[place.priceLevel]}</span> : null}<div className="meta">{place.address}</div></div></div>
-      <div className="finalrow"><span>👥</span><b>{headcount} going</b></div>
+      <div className="finalrow"><span>👥</span><b>{headcount}</b></div>
       <div className="linkbtns" style={{ marginTop: 12 }}>
         <button className="btn small" onClick={() => downloadIcs({ slug, title: event.title, startsAt: event.startsAt, place: place.name, address: place.address, url: inviteUrl(slug) })}>
           📅 Add to calendar
