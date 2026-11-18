@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { db } from './supabase';
 import { routeMatrix, searchText } from './google';
 import { driveMinutesForKm, estMinutes, findMidpoint, haversineKm, timingFor } from './geo';
-import { toLatLng, type Loaded, type ParticipantRow } from './data';
+import { toLatLng, usesLocation, type Loaded, type ParticipantRow } from './data';
 import { categoriesFor, travelModeOf } from '../categories';
 import type { LatLng, PersonEstimate, Plan, RankedVenue, TravelMode, Venue } from '../types';
 
@@ -20,14 +20,16 @@ const MAX_VENUES = 20;
 
 function located(l: Loaded) {
   return l.people
-    .filter((p) => l.locations.has(p.id))
+    .filter((p) => usesLocation(l, p))
     .map((p) => ({ p, loc: toLatLng(l.locations.get(p.id)!), mode: travelModeOf(p.role) as TravelMode }));
 }
 
 function inputHash(l: Loaded): string {
-  const people = located(l).map(({ p, loc }) => [p.id, p.role, [...p.likes].sort(), +loc.lat.toFixed(4), +loc.lng.toFixed(4)]);
+  const people = located(l).map(({ p, loc }) => [p.id, p.role, +loc.lat.toFixed(4), +loc.lng.toFixed(4)]);
+  // Everyone's likes count (even people not sharing an address), so they're part of the hash too.
+  const likes = l.people.map((p) => [p.id, [...p.likes].sort()]);
   return createHash('sha256')
-    .update(JSON.stringify([l.event.kind, l.event.midpoint_mode, l.event.starts_at, people]))
+    .update(JSON.stringify([l.event.kind, l.event.midpoint_mode, l.event.starts_at, people, likes]))
     .digest('hex');
 }
 
@@ -62,7 +64,7 @@ async function buildCore(l: Loaded): Promise<Core> {
   // Search the categories people actually want (most-wanted first); pad to at least 3.
   const cats = categoriesFor(l.event.kind);
   const wanted = cats
-    .map((c) => ({ c, n: ppl.filter(({ p }) => p.likes.includes(c.key)).length }))
+    .map((c) => ({ c, n: l.people.filter((p) => p.likes.includes(c.key)).length })) // everyone's likes, address or not
     .filter((x) => x.n > 0)
     .sort((a, b) => b.n - a.n)
     .slice(0, 6)
@@ -130,8 +132,8 @@ export interface CarpoolMatch {
 /** Greedy: give each rider to the driver with the smallest detour, then order pickups nearest-first. */
 export function matchCarpools(l: Loaded, venue: LatLng): CarpoolMatch {
   const loc = (id: string) => toLatLng(l.locations.get(id)!);
-  const drivers = l.people.filter((p) => p.role === 'driver' && p.seats > 0 && l.locations.has(p.id));
-  const riders = l.people.filter((p) => p.role === 'rider' && l.locations.has(p.id));
+  const drivers = l.people.filter((p) => p.role === 'driver' && p.seats > 0 && usesLocation(l, p));
+  const riders = l.people.filter((p) => p.role === 'rider' && usesLocation(l, p));
   const cap = new Map(drivers.map((d) => [d.id, d.seats]));
   const assigned = new Map<string, ParticipantRow[]>(drivers.map((d) => [d.id, []]));
   const riderDriver = new Map<string, string>();
@@ -170,8 +172,9 @@ export function matchCarpools(l: Loaded, venue: LatLng): CarpoolMatch {
 // ---------- ranking ----------
 
 export function derivePlan(l: Loaded, core: Core): Plan {
-  const ppl = located(l);
+  const ppl = located(l); // people whose address is in use: travel times
   const n = ppl.length;
+  const everyone = l.people; // everyone's likes count, address or not
   const fair = l.event.midpoint_mode === 'fair';
 
   const ranked: RankedVenue[] = core.venues
@@ -180,8 +183,8 @@ export function derivePlan(l: Loaded, core: Core): Plan {
       const avg = n ? ts.reduce((a, b) => a + b.t, 0) / n : 0;
       const worst = n ? ts.reduce((a, b) => (b.t > a.t ? b : a)) : null;
       const max = worst ? worst.t : 0;
-      const fanIds = ppl.filter(({ p }) => p.likes.includes(v.category)).map(({ p }) => p.id);
-      const pref = n ? fanIds.length / n : 0;
+      const fanIds = everyone.filter((p) => p.likes.includes(v.category)).map((p) => p.id);
+      const pref = everyone.length ? fanIds.length / everyone.length : 0;
       const ratingBonus = v.rating ? (v.rating - 4) * 4 : 0;
       // ~45 "minutes" of goodwill if everyone loves it; travel time counts against.
       const score = pref * 45 - (fair ? max : avg) - 0.25 * (max - avg) + ratingBonus;

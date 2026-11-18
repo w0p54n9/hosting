@@ -5,12 +5,13 @@ import { useState, type FormEvent } from 'react';
 import { api, joinLocal, setStored, splitLocal } from '@/lib/client';
 import type { EventKind, MidpointMode } from '@/lib/types';
 
-function nextFriday7pm(): string {
+function nextWeekday7pm(weekday: number): string {
   const d = new Date();
-  d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7 || 7));
+  d.setDate(d.getDate() + ((weekday - d.getDay() + 7) % 7 || 7));
   d.setHours(19, 0, 0, 0);
   return d.toISOString();
 }
+const nextFriday7pm = () => nextWeekday7pm(5);
 
 export default function Home() {
   const router = useRouter();
@@ -20,17 +21,32 @@ export default function Home() {
   const [time, setTime] = useState(initial.time);
   const [kind, setKind] = useState<EventKind>('food');
   const [mode, setMode] = useState<MidpointMode>('fair');
+  const [voteOnDate, setVoteOnDate] = useState(false);
+  const [options, setOptions] = useState(() => [nextWeekday7pm(4), nextWeekday7pm(5), nextWeekday7pm(6)].map(splitLocal));
+  const setOption = (i: number, patch: Partial<{ date: string; time: string }>) =>
+    setOptions((o) => o.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function create(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
+    if (voteOnDate && new Set(options.filter((o) => o.date).map((o) => joinLocal(o.date, o.time))).size < 2) {
+      setError('Add at least 2 different dates to vote on');
+      return;
+    }
+    setBusy(true);
     try {
       const r = await api<{ slug: string; organizerToken: string }>('/api/events', null, {
         method: 'POST',
-        json: { title: title || 'Team outing', startsAt: joinLocal(date, time), kind, midpointMode: mode },
+        json: {
+          title: title || 'Team outing',
+          kind,
+          midpointMode: mode,
+          ...(voteOnDate
+            ? { dateOptions: options.filter((o) => o.date).map((o) => joinLocal(o.date, o.time)) }
+            : { startsAt: joinLocal(date, time) }),
+        },
       });
       setStored(r.slug, { organizerToken: r.organizerToken });
       router.push(`/e/${r.slug}`);
@@ -53,16 +69,42 @@ export default function Home() {
           <span className="lbl">What&apos;s the outing?</span>
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Friday team dinner" maxLength={80} />
         </div>
-        <div className="row">
-          <div className="field" style={{ flex: 1 }}>
-            <span className="lbl">Date</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-          </div>
-          <div className="field" style={{ flex: 1 }}>
-            <span className="lbl">Arrive by</span>
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
+        <div className="field">
+          <span className="lbl">When?</span>
+          <div className="seg" style={{ marginTop: 6 }}>
+            <button type="button" className={!voteOnDate ? 'on' : ''} onClick={() => setVoteOnDate(false)}>📅 I&apos;ll pick the date</button>
+            <button type="button" className={voteOnDate ? 'on' : ''} onClick={() => setVoteOnDate(true)}>🗳️ Let everyone vote</button>
           </div>
         </div>
+        {!voteOnDate ? (
+          <div className="row">
+            <div className="field" style={{ flex: 1 }}>
+              <span className="lbl">Date</span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <span className="lbl">Arrive by</span>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
+            </div>
+          </div>
+        ) : (
+          <div className="field">
+            <span className="lbl">Dates to vote on</span>
+            {options.map((o, i) => (
+              <div className="row optedit" key={i}>
+                <input type="date" value={o.date} onChange={(e) => setOption(i, { date: e.target.value })} />
+                <input type="time" value={o.time} onChange={(e) => setOption(i, { time: e.target.value })} />
+                {options.length > 2 && (
+                  <button type="button" className="linkbtn" onClick={() => setOptions((x) => x.filter((_, j) => j !== i))} aria-label="Remove this date">✕</button>
+                )}
+              </div>
+            ))}
+            {options.length < 8 && (
+              <button type="button" className="linkbtn" onClick={() => setOptions((x) => [...x, { ...x[x.length - 1] }])}>+ Add another date</button>
+            )}
+            <div className="hint">Everyone marks the dates that work. You lock in the winner from the outing page.</div>
+          </div>
+        )}
         <div className="field">
           <span className="lbl">Going for</span>
           <div className="seg" style={{ marginTop: 6 }}>

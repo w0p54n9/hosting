@@ -2,7 +2,7 @@ import 'server-only';
 import { computeRoute, mapsLink, type RouteResult } from './google';
 import { estMinutes, timingFor } from './geo';
 import { matchCarpools } from './plan';
-import { toLatLng, type Loaded, type ParticipantRow } from './data';
+import { toLatLng, usesLocation, type Loaded, type ParticipantRow } from './data';
 import type { LatLng, MyTrip, Plan, TravelMode, TripStep } from '../types';
 
 const PICKUP_MIN = 2; // time spent at each pickup
@@ -21,7 +21,7 @@ async function safeRoute(o: LatLng, d: LatLng, via: LatLng[], mode: TravelMode, 
 export async function buildTrip(l: Loaded, plan: Plan, me: ParticipantRow): Promise<MyTrip | null> {
   const venue = plan.venues.find((v) => v.placeId === plan.selectedPlaceId);
   const myLoc = l.locations.get(me.id);
-  if (!venue || !myLoc) return null;
+  if (!venue || !myLoc || !usesLocation(l, me)) return null;
 
   const home = toLatLng(myLoc);
   const V = venue.location;

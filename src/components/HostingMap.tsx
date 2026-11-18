@@ -44,6 +44,7 @@ function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: P
   const top = plan.venues.slice(0, 8);
   const selected = plan.venues.find((v) => v.placeId === plan.selectedPlaceId) ?? null;
   const myColor = people.find((p) => p.id === me?.id)?.color ?? '#1f2430';
+  const home = me && me.shareLocation ? me.location : null; // your pin only while "Use my address" is on
 
   // Your route only. Nobody else's route is ever drawn, because it would reveal their home.
   useEffect(() => {
@@ -69,13 +70,13 @@ function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: P
   // Fit what matters to you: home, route, midpoint, top picks.
   const fitKey = useMemo(
     () =>
-      JSON.stringify([me?.location, plan.midpoint, top.map((v) => v.placeId), trip?.polyline?.length ?? 0, trip?.pickups?.length ?? 0, panelOpen]),
-    [me?.location, plan.midpoint, top, trip?.polyline, trip?.pickups, panelOpen],
+      JSON.stringify([home, plan.midpoint, top.map((v) => v.placeId), trip?.polyline?.length ?? 0, trip?.pickups?.length ?? 0, panelOpen]),
+    [home, plan.midpoint, top, trip?.polyline, trip?.pickups, panelOpen],
   );
   useEffect(() => {
     if (!map) return;
     const b = new google.maps.LatLngBounds();
-    if (me) b.extend(me.location);
+    if (home) b.extend(home);
     if (plan.midpoint) b.extend(plan.midpoint);
     top.forEach((v) => b.extend(v.location));
     if (selected) b.extend(selected.location);
@@ -118,8 +119,8 @@ function Layers({ plan, me, people, trip, focusId, panelOpen, onSelectVenue }: P
           </div>
         </AdvancedMarker>
       )}
-      {me && (
-        <AdvancedMarker position={me.location} title="Your home (only you see this)" zIndex={20}>
+      {home && (
+        <AdvancedMarker position={home} title="Your home (only you see this)" zIndex={20}>
           <div className="m-home" style={{ background: myColor }}>⌂</div>
         </AdvancedMarker>
       )}

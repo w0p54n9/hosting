@@ -30,6 +30,7 @@ export function PlacesPanel({
   const [showAll, setShowAll] = useState(false);
   const { plan, people, isOrganizer, event } = data;
   const located = people.filter((p) => p.hasLocation).length;
+  const total = people.length;
   const nameOf = (id: string | null) => people.find((p) => p.id === id)?.name ?? '';
 
   if (plan.error) return <div className="note warn">{plan.error}</div>;
@@ -60,7 +61,7 @@ export function PlacesPanel({
               </div>
               <div className="fit">
                 {v.fanIds.length > 0 && <Stack ids={v.fanIds} people={people} />}
-                <span><b>{v.fanIds.length} of {located}</b> into {v.category}</span>
+                <span><b>{v.fanIds.length} of {total}</b> into {v.category}</span>
               </div>
               <div className="bars">
                 <span>avg <b>{v.avgMin} min</b></span>
@@ -92,18 +93,31 @@ export function DirectionsPanel({
   loading,
   error,
   onJoin,
+  onUseAddress,
 }: {
   data: EventBundle;
   trip: MyTrip | null;
   loading: boolean;
   error: string | null;
   onJoin: () => void;
+  onUseAddress: () => void;
 }) {
   if (!data.me) {
     return (
       <div className="empty">
         <p>Join with your address to get your own directions and leave time.</p>
         <button className="btn" onClick={onJoin}>Join the outing</button>
+      </div>
+    );
+  }
+  if (!data.me.shareLocation || !data.me.location) {
+    return (
+      <div className="empty">
+        <p>
+          &ldquo;Use my address&rdquo; is off, so you&apos;re not part of the meeting-spot maths and there&apos;s no route to plan.
+          Turn it on any time to get directions, a leave-by time and a carpool.
+        </p>
+        <button className="btn" onClick={onUseAddress}>{data.me.address ? 'Use my address' : 'Add my address'}</button>
       </div>
     );
   }
@@ -119,6 +133,12 @@ export function DirectionsPanel({
         <h2>{trip.venue.name}</h2>
         <p>Arrive by {fmtTime(trip.arriveAt)}, {fmtDay(trip.arriveAt)}</p>
       </div>
+
+      {data.event.dateStatus === 'voting' && data.dateOptions.length > 0 && (
+        <div className="note" style={{ marginTop: 12 }}>
+          🗳️ The date is still being voted on. These times assume {fmtDay(trip.arriveAt)}, and they&apos;ll update when the host locks in a date.
+        </div>
+      )}
 
       {trip.unmatched && (
         <div className="note warn" style={{ marginTop: 12 }}>

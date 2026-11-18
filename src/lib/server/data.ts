@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './supabase';
 import { hashToken } from './tokens';
 import { PERSON_COLORS } from '../categories';
-import type { EventKind, LatLng, Me, MidpointMode, PublicEvent, PublicPerson, Role, Venue } from '../types';
+import type { DateOption, DateStatus, EventKind, LatLng, Me, MidpointMode, PublicEvent, PublicPerson, Role, Venue, Vote } from '../types';
 
 export interface EventRow {
   id: string;
@@ -14,6 +14,7 @@ export interface EventRow {
   chosen_place_id: string | null;
   chosen_place: Venue | null;
   organizer_token_hash: string;
+  date_status?: DateStatus; // optional so older databases without the column still work
   created_at: string;
 }
 
@@ -24,6 +25,7 @@ export interface ParticipantRow {
   role: Role;
   seats: number;
   likes: string[];
+  share_location?: boolean; // optional so older databases without the column still work
   token_hash: string;
   created_at: string;
 }
@@ -35,10 +37,24 @@ export interface LocationRow {
   lng: number;
 }
 
+export interface DateOptionRow {
+  id: string;
+  event_id: string;
+  starts_at: string;
+}
+
+export interface DateVoteRow {
+  option_id: string;
+  participant_id: string;
+  vote: Vote;
+}
+
 export interface Loaded {
   event: EventRow;
   people: ParticipantRow[];
   locations: Map<string, LocationRow>;
+  dateOptions: DateOptionRow[];
+  dateVotes: DateVoteRow[];
 }
 
 export async function loadEvent(slug: string): Promise<Loaded | null> {
@@ -61,8 +77,33 @@ export async function loadEvent(slug: string): Promise<Loaded | null> {
     if (e3) throw e3;
     locs = data ?? [];
   }
-  return { event, people: people ?? [], locations: new Map(locs.map((l) => [l.participant_id, l])) };
+
+  // Date voting. If the tables don't exist yet (migration not run), just treat it as "no options".
+  let dateOptions: DateOptionRow[] = [];
+  let dateVotes: DateVoteRow[] = [];
+  const { data: opts, error: e4 } = await db()
+    .from('date_options')
+    .select('id, event_id, starts_at')
+    .eq('event_id', event.id)
+    .order('starts_at', { ascending: true })
+    .returns<DateOptionRow[]>();
+  if (e4) console.error('date_options unavailable', e4.message);
+  else dateOptions = opts ?? [];
+  if (dateOptions.length) {
+    const { data: votes, error: e5 } = await db()
+      .from('date_votes')
+      .select('option_id, participant_id, vote')
+      .in('option_id', dateOptions.map((o) => o.id))
+      .returns<DateVoteRow[]>();
+    if (e5) console.error('date_votes unavailable', e5.message);
+    else dateVotes = votes ?? [];
+  }
+
+  return { event, people: people ?? [], locations: new Map(locs.map((l) => [l.participant_id, l])), dateOptions, dateVotes };
 }
+
+/** True when this person's address may be used for planning: they have one AND their switch is on. */
+export const usesLocation = (l: Loaded, p: ParticipantRow) => p.share_location !== false && l.locations.has(p.id);
 
 export const toLatLng = (l: LocationRow): LatLng => ({ lat: l.lat, lng: l.lng });
 
@@ -84,7 +125,17 @@ export function publicEvent(e: EventRow): PublicEvent {
     kind: e.kind,
     midpointMode: e.midpoint_mode,
     chosenPlaceId: e.chosen_place_id,
+    dateStatus: e.date_status === 'voting' ? 'voting' : 'set',
   };
+}
+
+export function publicDateOptions(l: Loaded): DateOption[] {
+  const ids = new Set(l.people.map((p) => p.id));
+  return l.dateOptions.map((o) => {
+    const votes = l.dateVotes.filter((v) => v.option_id === o.id && ids.has(v.participant_id));
+    const by = (k: Vote) => votes.filter((v) => v.vote === k).map((v) => v.participant_id);
+    return { id: o.id, startsAt: o.starts_at, yes: by('yes'), maybe: by('maybe'), no: by('no') };
+  });
 }
 
 /** Public view of everyone: no addresses, no coordinates. */
@@ -96,13 +147,21 @@ export function publicPeople(l: Loaded): PublicPerson[] {
     seats: p.seats,
     likes: p.likes,
     color: PERSON_COLORS[i % PERSON_COLORS.length],
-    hasLocation: l.locations.has(p.id),
+    hasLocation: usesLocation(l, p),
   }));
 }
 
 /** Your own details, including your own address. Only ever sent to you. */
-export function meView(l: Loaded, p: ParticipantRow): Me | null {
+export function meView(l: Loaded, p: ParticipantRow): Me {
   const loc = l.locations.get(p.id);
-  if (!loc) return null;
-  return { id: p.id, name: p.name, role: p.role, seats: p.seats, likes: p.likes, address: loc.address, location: toLatLng(loc) };
+  return {
+    id: p.id,
+    name: p.name,
+    role: p.role,
+    seats: p.seats,
+    likes: p.likes,
+    shareLocation: p.share_location !== false,
+    address: loc?.address ?? null,
+    location: loc ? toLatLng(loc) : null,
+  };
 }

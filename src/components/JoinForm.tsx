@@ -25,6 +25,8 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
   const [seats, setSeats] = useState(me?.seats ?? 0);
   const [likes, setLikes] = useState<string[]>(me?.likes ?? []);
   const [address, setAddress] = useState<{ placeId: string | null; label: string }>({ placeId: null, label: me?.address ?? '' });
+  const [share, setShare] = useState(me ? me.shareLocation : true);
+  const [forget, setForget] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,10 +39,19 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
     e.preventDefault();
     setError(null);
     if (!name.trim()) return setError('Add your name');
-    if (isNew && !address.placeId) return setError('Pick your address from the suggestions');
+    const hasSaved = !!me?.address && !forget;
+    if (share && !address.placeId && !hasSaved) return setError('Pick your address from the suggestions, or turn off "Use my address"');
     setBusy(true);
     try {
-      const body = { name, role, seats: role === 'driver' ? seats : 0, likes, ...(address.placeId ? { placeId: address.placeId, sessionToken } : {}) };
+      const body = {
+        name,
+        role,
+        seats: role === 'driver' ? seats : 0,
+        likes,
+        shareLocation: share,
+        ...(share && address.placeId ? { placeId: address.placeId, sessionToken } : {}),
+        ...(!share && forget ? { forgetAddress: true } : {}),
+      };
       if (isNew) {
         const r = await api<{ token: string }>(`/api/events/${slug}/participants`, slug, { method: 'POST', json: body });
         setStored(slug, { participantToken: r.token });
@@ -71,14 +82,33 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
     <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="sheet" onSubmit={save}>
         <h2>{isNew ? 'Join the outing' : 'Your details'}</h2>
-        <p className="lead">{isNew ? 'Takes 30 seconds. Your address stays private.' : 'Changes update the plan for everyone.'}</p>
+        <p className="lead">{isNew ? 'Takes 30 seconds. Your address stays private, and adding it is up to you.' : 'Changes update the plan for everyone.'}</p>
 
         <div className="field">
           <span className="lbl">Name</span>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="First name" maxLength={40} autoFocus={isNew} />
         </div>
 
-        <AddressInput value={address} onChange={setAddress} sessionToken={sessionToken} />
+        <div className="field">
+          <label className="switch big">
+            <input type="checkbox" checked={share} onChange={(e) => { setShare(e.target.checked); setForget(false); }} />
+            <span className="track" />
+            Use my address to find the meeting spot
+          </label>
+          {!share && (
+            <div className="hint">
+              You&apos;ll still count for the food and activity picks, but not for the meeting spot, carpools or directions.
+              You can turn this on any time.
+              {me?.address && (
+                <label className="forget">
+                  <input type="checkbox" checked={forget} onChange={(e) => setForget(e.target.checked)} /> Also delete my saved address
+                </label>
+              )}
+            </div>
+          )}
+        </div>
+
+        {share && <AddressInput value={address} onChange={setAddress} sessionToken={sessionToken} />}
 
         <div className="field">
           <span className="lbl">How are you getting there?</span>
@@ -99,7 +129,9 @@ export default function JoinForm({ slug, me, onClose, onSaved }: Props) {
               </div>
             </>
           )}
-          {role === 'rider' && <div className="hint">You&apos;ll be matched with a driver. Only that driver sees your address.</div>}
+          {role === 'rider' && share && <div className="hint">You&apos;ll be matched with a driver. Only that driver sees your address.</div>}
+          {role === 'rider' && !share && <div className="hint" style={{ color: 'var(--warn)' }}>Drivers need a pickup spot, so turn on &ldquo;Use my address&rdquo; to get matched with a ride.</div>}
+          {role === 'driver' && !share && <div className="hint" style={{ color: 'var(--warn)' }}>Without your address, Hosting can&apos;t plan pickups along your route, so riders won&apos;t be matched with you.</div>}
         </div>
 
         <div className="field">

@@ -1,7 +1,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { ALL_KEYS } from '../categories';
-import type { EventKind, MidpointMode, Role } from '../types';
+import type { EventKind, MidpointMode, Role, Vote } from '../types';
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
 export const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
@@ -69,4 +69,16 @@ export function cleanDate(v: unknown): string {
   const d = typeof v === 'string' ? new Date(v) : null;
   if (!d || Number.isNaN(d.getTime())) throw new HttpError(400, 'Pick a valid date and time');
   return d.toISOString();
+}
+
+export function cleanVote(v: unknown): Vote | null {
+  if (v === null) return null;
+  if (v === 'yes' || v === 'maybe' || v === 'no') return v;
+  throw new HttpError(400, 'Vote must be yes, maybe or no');
+}
+
+/** 2 to 8 distinct future-or-present date options, sorted. */
+export function cleanDateOptions(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.map(cleanDate))].sort().slice(0, 8);
 }

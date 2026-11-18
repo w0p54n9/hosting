@@ -67,7 +67,7 @@ h3 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: v
 .chip { font-size: 11.5px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
 .person.me .chip { background: var(--soft); border-color: #f6d3c7; }
 .ptime { text-align: right; font-family: var(--serif); font-weight: 700; font-size: 18px; line-height: 1; }
-.ptime small { display: block; font-family: var(--font-sans); font-weight: 500; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.ptime small { display: block; white-space: pre-line; font-family: var(--font-sans); font-weight: 500; font-size: 11px; color: var(--muted); margin-top: 3px; }
 .ptime.warn { color: var(--warn); }
 .linkbtn { border: 0; background: none; color: var(--accent-ink); font-size: 12px; padding: 0; font-weight: 700; margin-top: 6px; }
 .pool { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; }
@@ -142,6 +142,41 @@ h3 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: v
 .actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 18px; }
 .danger { background: none; border: 0; color: var(--warn); font-weight: 700; }
 .error { color: var(--warn); font-size: 13px; margin-top: 8px; }
+
+/* ---------- "use my address" switch ---------- */
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--ink); cursor: pointer; margin-top: 6px; user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch .track { width: 32px; height: 18px; border-radius: 999px; background: #d8d0c1; position: relative; transition: background .2s; flex: none; }
+.switch .track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s; }
+.switch input:checked + .track { background: var(--ok); }
+.switch input:checked + .track::after { transform: translateX(14px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch.big { font-size: 14px; font-weight: 700; }
+.forget { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--ink); cursor: pointer; }
+
+/* ---------- date poll ---------- */
+.poll { padding: 12px 12px 6px; }
+.pollhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pollhead b { font-size: 14px; }
+.optrow { border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; margin: 8px 0; background: var(--paper); }
+.optrow.lead { border-color: var(--ok); background: var(--okbg); }
+.optwhen { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 13.5px; }
+.leadbadge { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--ok); border-radius: 5px; padding: 2px 6px; }
+.tally { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 5px; min-height: 18px; }
+.votebtns { display: flex; gap: 5px; margin-top: 8px; }
+.vb { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 4px; font-weight: 700; font-size: 13px; }
+.vb span { font-weight: 500; font-size: 11px; color: var(--muted); }
+.vb.on.yes { background: var(--ok); border-color: var(--ok); color: #fff; }
+.vb.on.maybe { background: #d9921a; border-color: #d9921a; color: #fff; }
+.vb.on.no { background: var(--warn); border-color: var(--warn); color: #fff; }
+.vb.on span { color: rgba(255,255,255,.9); }
+.hostrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.hostrow .linkbtn { margin-top: 0; }
+.addopt { margin: 10px 0 6px; }
+.addopt .row { margin-top: 4px; }
+.addopt input { border: 1px solid var(--line); background: var(--paper); border-radius: 8px; padding: 5px 7px; font-size: 13px; flex: 1; min-width: 0; }
+.optedit { margin-top: 6px; }
+.optedit input { margin-top: 0 !important; }
 
 /* ---------- landing ---------- */
 .landing { min-height: 100vh; display: grid; place-items: center; padding: 24px; }

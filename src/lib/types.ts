@@ -12,13 +12,25 @@ export interface LatLng {
   lng: number;
 }
 
+export type DateStatus = 'set' | 'voting';
+export type Vote = 'yes' | 'maybe' | 'no';
+
 export interface PublicEvent {
   slug: string;
   title: string;
-  startsAt: string; // ISO, the time everyone should arrive
+  startsAt: string; // ISO, the time everyone should arrive (while voting: the date times are planned around)
   kind: EventKind;
   midpointMode: MidpointMode;
   chosenPlaceId: string | null;
+  dateStatus: DateStatus;
+}
+
+export interface DateOption {
+  id: string;
+  startsAt: string;
+  yes: string[]; // participant ids
+  maybe: string[];
+  no: string[];
 }
 
 export interface PublicPerson {
@@ -28,7 +40,7 @@ export interface PublicPerson {
   seats: number;
   likes: string[];
   color: string;
-  hasLocation: boolean;
+  hasLocation: boolean; // has an address AND has the "use my address" switch on
 }
 
 export interface Venue {
@@ -82,8 +94,9 @@ export interface Me {
   role: Role;
   seats: number;
   likes: string[];
-  address: string;
-  location: LatLng;
+  shareLocation: boolean;
+  address: string | null;
+  location: LatLng | null;
 }
 
 export interface EventBundle {
@@ -92,6 +105,7 @@ export interface EventBundle {
   plan: Plan;
   me: Me | null;
   isOrganizer: boolean;
+  dateOptions: DateOption[];
 }
 
 export interface TripStep {

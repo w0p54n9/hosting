@@ -1,5 +1,5 @@
 import { db } from '@/lib/server/supabase';
-import { findParticipant, isOrganizer, loadEvent, meView, publicEvent, publicPeople } from '@/lib/server/data';
+import { findParticipant, isOrganizer, loadEvent, meView, publicDateOptions, publicEvent, publicPeople } from '@/lib/server/data';
 import { getCore, planFor } from '@/lib/server/plan';
 import {
   HttpError, cleanDate, cleanKind, cleanMode, cleanText, fail, handle, json, organizerToken, participantToken, readJson,
@@ -23,12 +23,19 @@ export async function GET(req: Request, { params }: Ctx) {
       plan: await planFor(l),
       me: me ? meView(l, me) : null,
       isOrganizer: isOrganizer(l, organizerToken(req)),
+      dateOptions: publicDateOptions(l),
     };
     return json(bundle);
   });
 }
 
-/** Host-only: edit the outing or lock in the group pick. */
+/**
+ * Host-only: edit the outing, lock in the group pick, or manage the date vote:
+ *   { startVoting: true }        open voting (the current date becomes the first option)
+ *   { addDateOption: iso }       add a date/time to vote on
+ *   { removeDateOption: id }     remove one
+ *   { lockDate: optionId }       close the vote and set the outing to that date
+ */
 export async function PATCH(req: Request, { params }: Ctx) {
   return handle(async () => {
     const { slug } = await params;
@@ -60,9 +67,37 @@ export async function PATCH(req: Request, { params }: Ctx) {
         patch.chosen_place = v;
       }
     }
-    if (!Object.keys(patch).length) return json({ ok: true });
-    const { error } = await db().from('events').update(patch).eq('id', l.event.id);
-    if (error) throw error;
+
+    // ----- date voting -----
+    const addOption = async (iso: string) => {
+      const { error } = await db()
+        .from('date_options')
+        .upsert({ event_id: l.event.id, starts_at: iso }, { onConflict: 'event_id,starts_at', ignoreDuplicates: true });
+      if (error) throw error;
+    };
+    if (body.startVoting === true) {
+      await addOption(l.event.starts_at);
+      patch.date_status = 'voting';
+    }
+    if ('addDateOption' in body) {
+      if (l.dateOptions.length >= 8) throw new HttpError(400, 'Up to 8 dates can be voted on');
+      await addOption(cleanDate(body.addDateOption));
+    }
+    if (typeof body.removeDateOption === 'string') {
+      const { error } = await db().from('date_options').delete().eq('id', body.removeDateOption).eq('event_id', l.event.id);
+      if (error) throw error;
+    }
+    if (typeof body.lockDate === 'string') {
+      const opt = l.dateOptions.find((o) => o.id === body.lockDate);
+      if (!opt) throw new HttpError(400, 'That date is no longer an option');
+      patch.starts_at = opt.starts_at;
+      patch.date_status = 'set';
+    }
+
+    if (Object.keys(patch).length) {
+      const { error } = await db().from('events').update(patch).eq('id', l.event.id);
+      if (error) throw error;
+    }
     return json({ ok: true });
   });
 }
