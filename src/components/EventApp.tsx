@@ -56,7 +56,17 @@ export default function EventApp({ slug, mapsKey, mapId }: { slug: string; mapsK
     absorbLinkTokens(slug); // opened with a personal link? sign this browser in first
     load();
     const t = setInterval(() => document.visibilityState === 'visible' && load(), POLL_MS);
-    return () => clearInterval(t);
+    // A personal link opened while this page is already showing only changes the #, with no reload.
+    const onHash = () => {
+      absorbLinkTokens(slug);
+      setDismissedJoin(false);
+      load();
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('hashchange', onHash);
+    };
   }, [load]);
 
   // New visitors get the join form straight away.
